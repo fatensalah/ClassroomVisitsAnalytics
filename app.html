@@ -1,0 +1,2642 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+
+<head>
+  <meta charset="utf-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  >
+
+  <title>
+    منظومة تحليل الزيارات الصفية
+  </title>
+
+  <link
+    rel="stylesheet"
+    href="style.css"
+  >
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+  <script src="config.js"></script>
+
+  <style>
+    .analysis-filter-bar{
+      display:grid;
+      grid-template-columns:repeat(4,minmax(150px,1fr));
+      gap:12px;
+      align-items:end;
+      margin:16px 0 20px;
+      padding:16px;
+      background:rgba(255,255,255,.92);
+      border:1px solid rgba(22,88,86,.12);
+      border-radius:18px;
+      box-shadow:0 10px 28px rgba(20,54,70,.06);
+    }
+    .analysis-filter-bar label{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      font-size:.86rem;
+      font-weight:700;
+    }
+    .analysis-filter-bar select{
+      width:100%;
+      min-height:44px;
+    }
+    .criteria-intelligence{
+      margin-top:20px;
+    }
+    .criteria-reading-box{
+      padding:16px 18px;
+      margin:14px 0 18px;
+      border-radius:16px;
+      background:linear-gradient(135deg,rgba(17,90,86,.08),rgba(202,166,91,.08));
+      border:1px solid rgba(17,90,86,.12);
+      line-height:1.9;
+    }
+    .criteria-table-wrap{
+      overflow:auto;
+      border:1px solid rgba(22,88,86,.12);
+      border-radius:16px;
+      margin-top:12px;
+    }
+    .criteria-distribution-table,
+    .criteria-growth-table{
+      width:100%;
+      border-collapse:collapse;
+      min-width:920px;
+      background:#fff;
+    }
+    .criteria-distribution-table th,
+    .criteria-distribution-table td,
+    .criteria-growth-table th,
+    .criteria-growth-table td{
+      padding:10px 12px;
+      border-bottom:1px solid #e9eeee;
+      text-align:center;
+      vertical-align:middle;
+    }
+    .criteria-distribution-table th,
+    .criteria-growth-table th{
+      background:#124f52;
+      color:#fff;
+      position:sticky;
+      top:0;
+      z-index:1;
+    }
+    .criteria-distribution-table td:first-child,
+    .criteria-growth-table td:first-child{
+      text-align:right;
+      font-weight:700;
+    }
+    .domain-row td{
+      background:#d7e8e5 !important;
+      color:#173e42;
+      font-weight:800 !important;
+      text-align:right !important;
+    }
+    .rate-bad{background:#f7d9d9}
+    .rate-sat{background:#f7e7b7}
+    .rate-good{background:#d8eadc}
+    .rate-excellent{background:#c9dfd8}
+    .growth-up{font-weight:800;color:#17633d}
+    .growth-down{font-weight:800;color:#9f302d}
+    .growth-flat{font-weight:800;color:#715d25}
+    .growth-na{color:#777}
+    .growth-summary-grid{
+      display:grid;
+      grid-template-columns:repeat(4,minmax(120px,1fr));
+      gap:10px;
+      margin:14px 0;
+    }
+    .growth-summary-card{
+      border-radius:14px;
+      padding:14px;
+      background:#fff;
+      border:1px solid #e4eceb;
+      text-align:center;
+    }
+    .growth-summary-card strong{
+      display:block;
+      font-size:1.35rem;
+      margin-top:4px;
+    }
+    .scope-note{
+      font-size:.85rem;
+      color:#5e6d70;
+      margin-top:8px;
+    }
+    @media(max-width:900px){
+      .analysis-filter-bar{grid-template-columns:1fr 1fr}
+      .growth-summary-grid{grid-template-columns:1fr 1fr}
+    }
+    @media(max-width:560px){
+      .analysis-filter-bar{grid-template-columns:1fr}
+    }
+  </style>
+
+</head>
+
+<body>
+
+  <!-- =====================================================
+       SIDEBAR
+  ====================================================== -->
+
+  <aside class="sidebar">
+
+    <div class="brand">
+
+      <div class="brand-icon">
+        ◈
+      </div>
+
+      <div>
+        <h1>
+          الزيارات الصفية الذكية
+        </h1>
+
+        <p>
+          تحليل • متابعة • قرار
+        </p>
+      </div>
+
+    </div>
+
+
+    <div class="year-card">
+
+      <span>
+        العام الدراسي
+      </span>
+
+      <strong id="yearBadge">
+        2026-2027
+      </strong>
+
+    </div>
+
+
+    <nav class="nav">
+
+      <button
+        class="active"
+        data-view="dashboard"
+      >
+        <span>⌂</span>
+        الرئيسية
+      </button>
+
+
+      <button data-view="newVisit">
+        <span>＋</span>
+        زيارة جديدة
+      </button>
+
+
+      <button data-view="history">
+        <span>▤</span>
+        سجل الزيارات
+      </button>
+
+
+      <button data-view="monthly">
+        <span>◫</span>
+        التحليل الشهري
+      </button>
+
+
+      <button data-view="overall">
+        <span>◩</span>
+        التحليل الشامل
+      </button>
+
+
+      <button data-view="support">
+        <span>◎</span>
+        الدعم والمتابعة
+      </button>
+
+
+      <button data-view="reports">
+        <span>▣</span>
+        التقارير الرسمية
+      </button>
+
+
+      <button
+        class="admin-only hidden"
+        data-view="users"
+      >
+        <span>♙</span>
+        إدارة المستخدمين
+      </button>
+
+
+      <button
+        class="admin-only hidden"
+        data-view="masterdata"
+      >
+        <span>⚙</span>
+        البيانات الأساسية
+      </button>
+
+    </nav>
+
+
+    <div class="sidebar-footer">
+
+      <div
+        id="userInfo"
+        class="user-info"
+      >
+        ...
+      </div>
+
+      <button
+        id="logoutBtn"
+        class="logout-btn"
+      >
+        تسجيل الخروج
+      </button>
+
+    </div>
+
+  </aside>
+
+
+  <!-- =====================================================
+       MAIN
+  ====================================================== -->
+
+  <main class="main">
+
+    <header class="topbar">
+
+      <div>
+
+        <span class="eyebrow">
+          CLASSROOM VISITS ANALYTICS
+        </span>
+
+        <h2 id="pageTitle">
+          لوحة مؤشرات القيادة
+        </h2>
+
+      </div>
+
+
+      <div class="topbar-left">
+
+        <div class="system-status">
+
+          <span class="status-dot"></span>
+
+          بيانات محدثة
+
+        </div>
+
+      </div>
+
+    </header>
+
+
+    <!-- =====================================================
+         DASHBOARD
+    ====================================================== -->
+
+    <section
+      id="dashboardView"
+      class="view"
+    >
+
+      <!-- =========================
+           EXECUTIVE HEADER
+      ========================== -->
+
+      <div class="dashboard-hero">
+
+        <div>
+
+          <span class="eyebrow light">
+            EXECUTIVE DASHBOARD
+          </span>
+
+          <h3>
+            لوحة مؤشرات القيادة للزيارات الصفية
+          </h3>
+
+          <p>
+            قراءة تحليلية متكاملة للتغطية،
+            الأحكام، المعايير، مهارات القرن 21،
+            أعمال الطلبة، الاحتياجات التدريبية،
+            والدعم والمتابعة.
+          </p>
+
+        </div>
+
+
+        <div class="dashboard-period">
+
+          <span>
+            العام الدراسي
+          </span>
+
+          <strong>
+            2026 - 2027
+          </strong>
+
+        </div>
+
+      </div>
+
+
+
+      <article class="panel no-print">
+        <div class="panel-head">
+          <div>
+            <span class="panel-kicker">ANALYSIS SCOPE</span>
+            <h3>نطاق التحليل والنمو</h3>
+            <p>اختاري المدرسة كاملة أو قسمًا أو معلمة، وحددي الفترة الزمنية لقراءة النمو في المعايير من م1 إلى م18.</p>
+          </div>
+        </div>
+        <div class="analysis-filter-bar">
+          <label>
+            القسم
+            <select id="dashboardDeptFilter">
+              <option value="">المدرسة كاملة</option>
+            </select>
+          </label>
+          <label>
+            المعلمة
+            <select id="dashboardTeacherFilter">
+              <option value="">كل المعلمات</option>
+            </select>
+          </label>
+          <label>
+            من شهر
+            <select id="dashboardFromMonth">
+              <option value="">أول شهر متاح</option>
+            </select>
+          </label>
+          <label>
+            إلى شهر
+            <select id="dashboardToMonth">
+              <option value="">آخر شهر متاح</option>
+            </select>
+          </label>
+        </div>
+      </article>
+
+
+      <!-- =========================
+           LEADERSHIP DECISION
+      ========================== -->
+
+      <article class="leadership-decision-card">
+
+        <div class="decision-icon">
+          ◉
+        </div>
+
+        <div>
+
+          <span class="decision-label">
+            قرار القيادة المقترح
+          </span>
+
+          <h3 id="leadershipDecisionTitle">
+            جاري تحليل البيانات...
+          </h3>
+
+          <p id="leadershipDecisionText">
+            يتم تحديد أولوية المتابعة تلقائيًا
+            وفق الفجوات المتكررة والمؤشرات الأقل أداءً.
+          </p>
+
+        </div>
+
+
+        <div
+          id="leadershipDecisionBadge"
+          class="decision-priority"
+        >
+          —
+        </div>
+
+      </article>
+
+
+      <!-- =========================
+           TOP KPI
+      ========================== -->
+
+      <div class="executive-kpi-grid">
+
+        <article
+          class="executive-kpi"
+          id="kpiVisits"
+        >
+
+          <span class="kpi-label">
+            إجمالي الزيارات
+          </span>
+
+          <strong class="kpi-value">
+            0
+          </strong>
+
+          <span class="kpi-sub"></span>
+
+        </article>
+
+
+        <article
+          class="executive-kpi"
+          id="kpiCoverage"
+        >
+
+          <span class="kpi-label">
+            تغطية المعلمات
+          </span>
+
+          <strong class="kpi-value">
+            0%
+          </strong>
+
+          <span class="kpi-sub"></span>
+
+        </article>
+
+
+        <article
+          class="executive-kpi"
+          id="kpiDepartments"
+        >
+
+          <span class="kpi-label">
+            الأقسام المغطاة
+          </span>
+
+          <strong class="kpi-value">
+            0
+          </strong>
+
+          <span class="kpi-sub"></span>
+
+        </article>
+
+
+        <article
+          class="executive-kpi"
+          id="kpiConsistency"
+        >
+
+          <span class="kpi-label">
+            اتساق الزيارات
+          </span>
+
+          <strong class="kpi-value">
+            0%
+          </strong>
+
+          <span class="kpi-sub"></span>
+
+        </article>
+
+
+        <article
+          class="executive-kpi"
+          id="kpiSupport"
+        >
+
+          <span class="kpi-label">
+            حالات دعم مفتوحة
+          </span>
+
+          <strong class="kpi-value">
+            0
+          </strong>
+
+          <span class="kpi-sub"></span>
+
+        </article>
+
+
+        <article
+          class="executive-kpi"
+          id="kpiTeachers"
+        >
+
+          <span class="kpi-label">
+            المعلمات المزارات
+          </span>
+
+          <strong class="kpi-value">
+            0
+          </strong>
+
+          <span class="kpi-sub"></span>
+
+        </article>
+
+      </div>
+
+
+      <!-- =========================
+           JUDGMENT + DOMAINS
+      ========================== -->
+
+      <div class="dashboard-grid two">
+
+        <article class="panel chart-panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="panel-kicker">
+                الحكم العام
+              </span>
+
+              <h3>
+                توزيع الأحكام العامة
+              </h3>
+
+              <p>
+                يتجاوز التوقعات بكثير، يتجاوز التوقعات، يفي بالتوقعات تمامًا، يفي بالتوقعات جزئيًا
+                حسب الحكم المسجل في كل زيارة.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div class="chart-box">
+            <canvas id="judgmentChart"></canvas>
+          </div>
+
+        </article>
+
+
+        <article class="panel chart-panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="panel-kicker">
+                المجالات الرسمية
+              </span>
+
+              <h3>
+                قراءة المجالات الخمسة
+              </h3>
+
+              <p>
+                نسبة أرصاد المعايير عند يفي بالتوقعات تمامًا فأعلى
+                مقابل يفي بالتوقعات جزئيًا.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div class="chart-box">
+            <canvas id="domainChart"></canvas>
+          </div>
+
+        </article>
+
+      </div>
+
+
+      <!-- =========================
+           CRITERIA HEATMAP
+      ========================== -->
+
+      <article class="panel strategic-panel">
+
+        <div class="panel-head">
+
+          <div>
+
+            <span class="panel-kicker">
+              18 CRITERIA
+            </span>
+
+            <h3>
+              الخريطة الحرارية لمعايير الزيارة الصفية
+            </h3>
+
+            <p>
+              تكشف المعايير ذات أعلى نسبة رصد
+              «يفي بالتوقعات جزئيًا» وتحدد مناطق الأولوية.
+            </p>
+
+          </div>
+
+
+          <div class="legend-inline">
+
+            <span class="legend-good">
+              منخفض
+            </span>
+
+            <span class="legend-medium">
+              يحتاج متابعة
+            </span>
+
+            <span class="legend-high">
+              أولوية
+            </span>
+
+          </div>
+
+        </div>
+
+
+        <div
+          id="criteriaHeatmap"
+          class="heatmap-grid"
+        ></div>
+
+      </article>
+
+
+      <article class="panel strategic-panel criteria-intelligence">
+        <div class="panel-head">
+          <div>
+            <span class="panel-kicker">CRITERIA DISTRIBUTION & GROWTH</span>
+            <h3>تحليل المعايير الثمانية عشر وتتبع النمو</h3>
+            <p>توزيع مستويات الأداء لكل معيار، ثم قراءة التطور بين كل شهرين متتاليين اعتمادًا على المستوى الأكثر تكرارًا ونسبته.</p>
+          </div>
+        </div>
+        <div id="dashboardCriteriaAnalytics"></div>
+      </article>
+
+
+
+      <!-- =========================
+           GAPS + STRENGTHS
+      ========================== -->
+
+      <div class="dashboard-grid two">
+
+        <article class="panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="panel-kicker">
+                PRIORITIES
+              </span>
+
+              <h3>
+                الفجوات ذات الأولوية
+              </h3>
+
+            </div>
+
+          </div>
+
+          <div id="topGaps"></div>
+
+        </article>
+
+
+        <article class="panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="panel-kicker">
+                STRENGTHS
+              </span>
+
+              <h3>
+                أبرز جوانب القوة
+              </h3>
+
+            </div>
+
+          </div>
+
+          <div id="topStrengths"></div>
+
+        </article>
+
+      </div>
+
+
+      <!-- =================================================
+           TRAINING NEEDS
+      ================================================== -->
+
+      <article class="panel strategic-panel">
+
+        <div class="panel-head">
+
+          <div>
+
+            <span class="panel-kicker">
+              PROFESSIONAL DEVELOPMENT
+            </span>
+
+            <h3>
+              أبرز الاحتياجات التدريبية
+            </h3>
+
+            <p>
+              احتياجات مستنتجة تحليليًا من
+              الفجوات المتكررة، معايير التقييم،
+              ومهارات القرن الحادي والعشرين.
+            </p>
+
+          </div>
+
+
+          <span class="analysis-note">
+            مؤشر تحليلي وليس بندًا مستقلًا في الاستمارة
+          </span>
+
+        </div>
+
+
+        <div
+          id="trainingNeeds"
+          class="training-needs-grid"
+        ></div>
+
+      </article>
+
+
+      <!-- =================================================
+           21ST CENTURY SKILLS
+      ================================================== -->
+
+      <div class="dashboard-grid skills-layout">
+
+        <article class="panel chart-panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="panel-kicker">
+                21ST CENTURY SKILLS
+              </span>
+
+              <h3>
+                مهارات القرن الحادي والعشرين
+              </h3>
+
+              <p>
+                نسبة ظهور المهارات الثماني
+                في المواقف التعليمية المرصودة.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div class="chart-box large">
+            <canvas id="skillsChart"></canvas>
+          </div>
+
+        </article>
+
+
+        <article class="panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="panel-kicker">
+                LOWEST SKILLS
+              </span>
+
+              <h3>
+                المهارات الأقل ظهورًا
+              </h3>
+
+              <p>
+                تمثل أولويات دعم محتملة
+                عند تكرارها في العينة.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div id="skillsWeakest"></div>
+
+        </article>
+
+      </div>
+
+
+      <!-- =================================================
+           STUDENT WORK
+      ================================================== -->
+
+      <div class="dashboard-grid two">
+
+        <article class="panel chart-panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="panel-kicker">
+                STUDENT WORK
+              </span>
+
+              <h3>
+                متابعة أعمال الطلبة
+              </h3>
+
+              <p>
+                تحليل العناصر الخمسة الواردة
+                في الاستمارة الرسمية.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div class="chart-box large">
+            <canvas id="studentWorkChart"></canvas>
+          </div>
+
+        </article>
+
+
+        <article class="panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="panel-kicker">
+                STUDENT WORK PRIORITY
+              </span>
+
+              <h3>
+                أبرز جوانب المتابعة
+              </h3>
+
+            </div>
+
+          </div>
+
+
+          <div id="studentWorkWeakest"></div>
+
+        </article>
+
+      </div>
+
+
+      <!-- =================================================
+           EVALUATION KEYS
+      ================================================== -->
+
+      <article class="panel strategic-panel">
+
+        <div class="panel-head">
+
+          <div>
+
+            <span class="panel-kicker">
+              EVALUATION KEYS
+            </span>
+
+            <h3>
+              مفاتيح تقييم الزيارة
+            </h3>
+
+            <p>
+              قراءة مستقلة للمعايير:
+              1، 2، 6، 9، 10، 11، 14، 16، 18.
+            </p>
+
+          </div>
+
+        </div>
+
+
+        <div
+          id="evaluationKeysAnalysis"
+          class="evaluation-keys-grid"
+        ></div>
+
+      </article>
+
+
+      <!-- =================================================
+           DEPARTMENTS
+      ================================================== -->
+
+      <article class="panel">
+
+        <div class="panel-head">
+
+          <div>
+
+            <span class="panel-kicker">
+              DEPARTMENTS
+            </span>
+
+            <h3>
+              قراءة الأقسام
+            </h3>
+
+            <p>
+              مقارنة وصفية مع إظهار حجم العينة
+              لتجنب استنتاجات غير دقيقة.
+            </p>
+
+          </div>
+
+        </div>
+
+
+        <div
+          id="departmentCards"
+          class="department-cards"
+        ></div>
+
+      </article>
+
+
+      <!-- =================================================
+           COVERAGE
+      ================================================== -->
+
+      <div class="dashboard-grid two">
+
+        <article class="panel chart-panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="panel-kicker">
+                COVERAGE
+              </span>
+
+              <h3>
+                تغطية المعلمات
+              </h3>
+
+            </div>
+
+          </div>
+
+
+          <div class="chart-box">
+            <canvas id="coverageChart"></canvas>
+          </div>
+
+        </article>
+
+
+        <article class="panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="panel-kicker">
+                FOLLOW-UP LIST
+              </span>
+
+              <h3>
+                معلمات لم تتم زيارتهن
+              </h3>
+
+            </div>
+
+          </div>
+
+
+          <div
+            id="unvisitedTeachers"
+            class="people-list"
+          ></div>
+
+        </article>
+
+      </div>
+
+
+      <!-- =================================================
+           SUPPORT
+      ================================================== -->
+
+      <div class="dashboard-grid two">
+
+        <article class="panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="panel-kicker">
+                SUPPORT
+              </span>
+
+              <h3>
+                حالة الدعم والمتابعة
+              </h3>
+
+            </div>
+
+          </div>
+
+
+          <div
+            id="supportSnapshot"
+            class="support-stats"
+          ></div>
+
+        </article>
+
+
+        <article class="panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="panel-kicker">
+                OBSERVED CHANGE
+              </span>
+
+              <h3>
+                التغير المرصود بعد الدعم
+              </h3>
+
+              <p>
+                تحسن / ثبات / تراجع
+                وفق زيارات المتابعة المسجلة.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div id="supportImpactSummary"></div>
+
+        </article>
+
+      </div>
+
+
+      <!-- =================================================
+           TREND
+      ================================================== -->
+
+      <article class="panel chart-panel">
+
+        <div class="panel-head">
+
+          <div>
+
+            <span class="panel-kicker">
+              TREND
+            </span>
+
+            <h3>
+              الاتجاه الزمني للزيارات والفجوات
+            </h3>
+
+            <p>
+              قراءة تراكمية لحركة المؤشرات عبر الشهور.
+            </p>
+
+          </div>
+
+        </div>
+
+
+        <div class="chart-box large">
+          <canvas id="trendChart"></canvas>
+        </div>
+
+      </article>
+
+
+      <!-- =================================================
+           QUICK NOTES
+      ================================================== -->
+
+      <div class="dashboard-grid two">
+
+        <article class="panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="panel-kicker">
+                QUICK INSIGHTS
+              </span>
+
+              <h3>
+                ملاحظات قيادية سريعة
+              </h3>
+
+            </div>
+
+          </div>
+
+
+          <div
+            id="leadershipInsights"
+            class="leadership-insights"
+          ></div>
+
+        </article>
+
+
+        <article class="panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="panel-kicker">
+                RECENT VISITS
+              </span>
+
+              <h3>
+                أحدث الزيارات
+              </h3>
+
+            </div>
+
+          </div>
+
+
+          <div id="recentVisits"></div>
+
+        </article>
+
+      </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         NEW VISIT
+    ====================================================== -->
+
+    <section
+      id="newVisitView"
+      class="view hidden"
+    >
+
+      <form id="visitForm">
+
+        <!-- =========================
+             VISIT INFO
+        ========================== -->
+
+        <article class="panel form-panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="step-no">
+                01
+              </span>
+
+              <h3>
+                بيانات الزيارة
+              </h3>
+
+            </div>
+
+          </div>
+
+
+          <div class="form-grid three">
+
+            <label>
+
+              المعلمة
+
+              <select
+                id="teacherSelect"
+                required
+              >
+                <option value="">
+                  اختاري المعلمة
+                </option>
+              </select>
+
+            </label>
+
+
+            <label>
+
+              القسم
+
+              <select
+                id="departmentSelect"
+                required
+              >
+                <option value="">
+                  اختاري القسم
+                </option>
+              </select>
+
+            </label>
+
+
+            <label>
+
+              المادة
+
+              <select
+                id="subjectSelect"
+                required
+                disabled
+              >
+                <option value="">
+                  اختاري المادة
+                </option>
+              </select>
+
+            </label>
+
+
+            <label>
+
+              تاريخ الزيارة
+
+              <input
+                id="visitDate"
+                type="date"
+                required
+              >
+
+            </label>
+
+
+            <label>
+
+              رقم الزيارة
+
+              <input
+                id="visitNumber"
+                type="number"
+                min="1"
+              >
+
+            </label>
+
+
+            <label>
+
+              الصف / الشعبة
+
+              <input
+                id="gradeSection"
+                type="text"
+                placeholder="مثال: الخامس / 2"
+              >
+
+            </label>
+
+
+            <label>
+
+              الحصة
+
+              <input
+                id="periodName"
+                type="text"
+                placeholder="مثال: الحصة الثالثة"
+              >
+
+            </label>
+
+
+            <label>
+
+              عنوان الدرس
+
+              <input
+                id="lessonTitle"
+                type="text"
+              >
+
+            </label>
+
+
+            <label>
+
+              عدد الطلبة
+
+              <input
+                id="studentsCount"
+                type="number"
+                min="0"
+              >
+
+            </label>
+
+
+            <label>
+
+              عدد الغياب
+
+              <input
+                id="absentCount"
+                type="number"
+                min="0"
+              >
+
+            </label>
+
+
+            <label>
+
+              الحكم العام للدرس
+
+              <select
+                id="overallRating"
+                required
+              >
+
+                <option value="">
+                  اختاري الحكم
+                </option>
+
+                <option value="4">
+                  يتجاوز التوقعات بكثير
+                </option>
+
+                <option value="3">
+                  يتجاوز التوقعات
+                </option>
+
+                <option value="2">
+                  يفي بالتوقعات تمامًا
+                </option>
+
+                <option value="1">
+                  يفي بالتوقعات جزئيًا
+                </option>
+
+              </select>
+
+            </label>
+
+          </div>
+
+
+          <div class="evaluator-block">
+
+            <div class="evaluator-icon">
+              ◉
+            </div>
+
+            <div>
+
+              <span class="field-caption">
+                المُقيِّم / منفذ الزيارة
+              </span>
+
+              <strong id="visitEvaluatorName">
+                يتم تحديده من الحساب
+              </strong>
+
+              <span
+                id="visitEvaluatorLevel"
+                class="evaluator-level"
+              >
+                —
+              </span>
+
+            </div>
+
+          </div>
+
+
+          <div id="adminEvaluatorChooser" class="admin-only hidden" style="margin-top:14px;">
+            <label>
+              منفذ الزيارة الفعلي
+              <select id="visitObserverSelect">
+                <option value="">اختاري منفذ الزيارة</option>
+              </select>
+              <small class="field-caption">يظهر لمسؤولة النظام فقط، ويُستخدم لتصنيف الزيارة قيادة عليا أو قيادة وسطى.</small>
+            </label>
+          </div>
+
+          <div id="consistencyHint"></div>
+
+        </article>
+
+
+        <!-- =========================
+             18 CRITERIA
+        ========================== -->
+
+        <article class="panel form-panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="step-no">
+                02
+              </span>
+
+              <h3>
+                معايير الملاحظة الصفية
+              </h3>
+
+              <p>
+                تقييم المعايير الثمانية عشر
+                وفق المستويات الرسمية.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div id="criteriaContainer"></div>
+
+        </article>
+
+
+        <!-- =========================
+             21st CENTURY SKILLS
+        ========================== -->
+
+        <article class="panel form-panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="step-no">
+                03
+              </span>
+
+              <h3>
+                مهارات القرن الحادي والعشرين
+              </h3>
+
+            </div>
+
+          </div>
+
+
+          <div class="check-grid">
+
+            <label class="check-card">
+
+              <input
+                id="skill1"
+                type="checkbox"
+              >
+
+              التفكير الناقد وحل المشكلات
+
+            </label>
+
+
+            <label class="check-card">
+
+              <input
+                id="skill2"
+                type="checkbox"
+              >
+
+              التعاون والتواصل
+
+            </label>
+
+
+            <label class="check-card">
+
+              <input
+                id="skill3"
+                type="checkbox"
+              >
+
+              الإبداع والابتكار
+
+            </label>
+
+
+            <label class="check-card">
+
+              <input
+                id="skill4"
+                type="checkbox"
+              >
+
+              المعرفة المعلوماتية
+
+            </label>
+
+
+            <label class="check-card">
+
+              <input
+                id="skill5"
+                type="checkbox"
+              >
+
+              المعرفة الرقمية
+
+            </label>
+
+
+            <label class="check-card">
+
+              <input
+                id="skill6"
+                type="checkbox"
+              >
+
+              الوعي العالمي والثقافي
+
+            </label>
+
+
+            <label class="check-card">
+
+              <input
+                id="skill7"
+                type="checkbox"
+              >
+
+              القدرة على التكيف والمرونة
+
+            </label>
+
+
+            <label class="check-card">
+
+              <input
+                id="skill8"
+                type="checkbox"
+              >
+
+              الذكاء العاطفي
+
+            </label>
+
+          </div>
+
+        </article>
+
+
+        <!-- =========================
+             STUDENT WORK
+        ========================== -->
+
+        <article class="panel form-panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="step-no">
+                04
+              </span>
+
+              <h3>
+                متابعة أعمال الطلبة
+              </h3>
+
+              <p>
+                يتم فحص من 4 إلى 6 عينات.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <div class="form-grid">
+
+            <label>
+
+              عدد العينات
+
+              <input
+                id="samplesCount"
+                type="number"
+                min="4"
+                max="6"
+              >
+
+            </label>
+
+          </div>
+
+
+          <div class="check-grid">
+
+            <label class="check-card">
+
+              <input
+                id="sw1"
+                type="checkbox"
+              >
+
+              مناسبة كمية ونوعية الأنشطة
+              وتوافقها مع مخرجات المنهج
+
+            </label>
+
+
+            <label class="check-card">
+
+              <input
+                id="sw2"
+                type="checkbox"
+              >
+
+              مراعاة اختلاف مستويات الطلبة الأكاديمية
+
+            </label>
+
+
+            <label class="check-card">
+
+              <input
+                id="sw3"
+                type="checkbox"
+              >
+
+              تنمية التفكير العليا والبحث
+              والاستقصاء والتعلم الذاتي
+
+            </label>
+
+
+            <label class="check-card">
+
+              <input
+                id="sw4"
+                type="checkbox"
+              >
+
+              انتظام التصحيح والتصويب
+
+            </label>
+
+
+            <label class="check-card">
+
+              <input
+                id="sw5"
+                type="checkbox"
+              >
+
+              تعزيز الأعمال المتميزة
+              وتقديم التغذية الراجعة البناءة
+
+            </label>
+
+          </div>
+
+
+          <label>
+
+            ملاحظات متابعة أعمال الطلبة
+
+            <textarea
+              id="studentWorkNotes"
+              rows="3"
+            ></textarea>
+
+          </label>
+
+        </article>
+
+
+        <!-- =========================
+             FEEDBACK + SUPPORT
+        ========================== -->
+
+        <article class="panel form-panel">
+
+          <div class="panel-head">
+
+            <div>
+
+              <span class="step-no">
+                05
+              </span>
+
+              <h3>
+                التغذية الراجعة والدعم
+              </h3>
+
+            </div>
+
+          </div>
+
+
+          <div class="form-grid two">
+
+            <label>
+
+              نجاحات المعلم
+
+              <textarea
+                id="strengths"
+                rows="4"
+              ></textarea>
+
+            </label>
+
+
+            <label>
+
+              جوانب بحاجة إلى تطوير
+
+              <textarea
+                id="developmentAreas"
+                rows="4"
+              ></textarea>
+
+            </label>
+
+          </div>
+
+
+          <div class="form-grid three">
+
+            <label>
+
+              أسلوب الدعم
+
+              <select id="supportType">
+
+                <option value="">
+                  لا يوجد
+                </option>
+
+                <option value="لقاء فردي">
+                  لقاء فردي
+                </option>
+
+                <option value="قراءة موجهة">
+                  قراءة موجهة
+                </option>
+
+                <option value="زيارة تبادلية">
+                  زيارة تبادلية
+                </option>
+
+                <option value="ورشة عمل">
+                  ورشة عمل
+                </option>
+
+                <option value="توأمة ومجتمعات تعلم">
+                  توأمة ومجتمعات تعلم
+                </option>
+
+                <option value="أخرى">
+                  أخرى
+                </option>
+
+              </select>
+
+            </label>
+            <div class="support-criteria-field">
+              <span class="field-caption">المعايير المرتبطة بالدعم — يمكن اختيار أكثر من معيار</span>
+              <div id="supportCriteriaMulti" class="check-grid"></div>
+            </div>
+
+
+            <label>
+
+              تفاصيل الدعم
+
+              <input
+                id="supportDetails"
+                type="text"
+              >
+
+            </label>
+
+          </div>
+
+
+          <label>
+
+            ملاحظات عامة
+
+            <textarea
+              id="generalNotes"
+              rows="4"
+            ></textarea>
+
+          </label>
+
+
+          <div class="form-actions">
+
+            <button
+              type="submit"
+              class="btn btn-primary"
+            >
+              حفظ الزيارة
+            </button>
+
+            <div
+              id="saveMsg"
+              class="message"
+            ></div>
+
+          </div>
+
+        </article>
+
+      </form>
+
+    </section>
+
+
+    <!-- =====================================================
+         HISTORY
+    ====================================================== -->
+
+    <section
+      id="historyView"
+      class="view hidden"
+    >
+
+      <article class="panel">
+
+        <div class="panel-head">
+
+          <div>
+
+            <h3>
+              سجل الزيارات
+            </h3>
+
+            <p>
+              عرض، تعديل، طباعة وحذف الزيارات.
+            </p>
+
+          </div>
+
+
+          <span
+            id="historyCount"
+            class="badge"
+          >
+            0 زيارة
+          </span>
+
+        </div>
+
+
+        <div class="filter-grid">
+
+          <select id="histMonth">
+
+            <option value="">
+              كل الشهور
+            </option>
+
+          </select>
+
+
+          <select id="histTeacher">
+
+            <option value="">
+              كل المعلمات
+            </option>
+
+          </select>
+
+
+          <select id="histDept">
+
+            <option value="">
+              كل الأقسام
+            </option>
+
+          </select>
+
+
+          <select id="histSubject">
+
+            <option value="">
+              كل المواد
+            </option>
+
+          </select>
+
+
+          <select id="histRating">
+
+            <option value="">
+              كل الأحكام
+            </option>
+
+            <option value="4">
+              يتجاوز التوقعات بكثير
+            </option>
+
+            <option value="3">
+              يتجاوز التوقعات
+            </option>
+
+            <option value="2">
+              يفي بالتوقعات تمامًا
+            </option>
+
+            <option value="1">
+              يفي بالتوقعات جزئيًا
+            </option>
+
+          </select>
+
+        </div>
+
+
+        <div id="historyTable"></div>
+
+      </article>
+
+    </section>
+
+
+    <!-- =====================================================
+         MONTHLY ANALYSIS
+    ====================================================== -->
+
+    <section
+      id="monthlyView"
+      class="view hidden"
+    >
+
+      <div class="analysis-hero monthly-hero">
+
+        <div>
+
+          <span class="eyebrow light">
+            MONTHLY OPERATIONAL ANALYSIS
+          </span>
+
+          <h3>
+            التحليل الشهري
+          </h3>
+
+          <p>
+            متابعة تشغيلية للشهر الحالي
+            ومقارنته بالشهر السابق.
+          </p>
+
+        </div>
+
+
+        <div class="analysis-controls">
+
+          <select id="monthlyMonth">
+            <option value="">اختاري الشهر</option>
+          </select>
+
+          <select id="monthlyDeptFilter">
+            <option value="">المدرسة كاملة</option>
+          </select>
+
+          <select id="monthlyTeacherFilter">
+            <option value="">كل المعلمات</option>
+          </select>
+
+          <button
+            id="refreshMonthly"
+            class="btn btn-light"
+          >
+            تحديث
+          </button>
+
+        </div>
+
+      </div>
+
+
+      <div id="monthlyContent"></div>
+
+    </section>
+
+
+    <!-- =====================================================
+         OVERALL ANALYSIS
+    ====================================================== -->
+
+    <section
+      id="overallView"
+      class="view hidden"
+    >
+
+      <div class="analysis-hero overall-hero">
+
+        <div>
+
+          <span class="eyebrow light">
+            STRATEGIC YEAR ANALYSIS
+          </span>
+
+          <h3>
+            التحليل الشامل
+          </h3>
+
+          <p>
+            تحليل استراتيجي تراكمي للفجوات،
+            الاتجاهات، المهارات، أعمال الطلبة،
+            والدعم.
+          </p>
+
+        </div>
+
+      </div>
+
+      <article class="panel no-print">
+        <div class="analysis-filter-bar">
+          <label>
+            القسم
+            <select id="overallDeptFilter">
+              <option value="">المدرسة كاملة</option>
+            </select>
+          </label>
+          <label>
+            المعلمة
+            <select id="overallTeacherFilter">
+              <option value="">كل المعلمات</option>
+            </select>
+          </label>
+          <label>
+            من شهر
+            <select id="overallFromMonth">
+              <option value="">أول شهر متاح</option>
+            </select>
+          </label>
+          <label>
+            إلى شهر
+            <select id="overallToMonth">
+              <option value="">آخر شهر متاح</option>
+            </select>
+          </label>
+        </div>
+      </article>
+
+
+      <div id="overallContent"></div>
+
+    </section>
+
+
+    <!-- =====================================================
+         SUPPORT
+    ====================================================== -->
+
+    <section
+      id="supportView"
+      class="view hidden"
+    >
+
+      <article class="panel">
+
+        <div class="panel-head">
+
+          <div>
+
+            <h3>
+              الدعم والمتابعة
+            </h3>
+
+            <p>
+              متابعة إجراءات الدعم والتغير المرصود
+              في الزيارات اللاحقة.
+            </p>
+
+          </div>
+
+        </div>
+
+
+        <div class="filter-grid">
+
+          <select id="supportTeacherFilter">
+
+            <option value="">
+              كل المعلمات
+            </option>
+
+          </select>
+
+
+          <select id="supportStatusFilter">
+
+            <option value="">
+              كل الحالات
+            </option>
+
+            <option value="مفتوح">
+              مفتوح
+            </option>
+
+            <option value="تحت المتابعة">
+              تحت المتابعة
+            </option>
+
+            <option value="مغلق">
+              مغلق
+            </option>
+
+          </select>
+
+        </div>
+
+
+        <div id="supportContent"></div>
+
+      </article>
+
+    </section>
+
+
+    <!-- =====================================================
+         REPORTS
+    ====================================================== -->
+
+    <section
+      id="reportsView"
+      class="view hidden"
+    >
+
+      <article class="panel report-control no-print">
+
+        <div class="panel-head">
+
+          <div>
+
+            <span class="panel-kicker">
+              OFFICIAL REPORTING
+            </span>
+
+            <h3>
+              مركز التقارير القيادية
+            </h3>
+
+            <p>
+              التقرير الشهري والتقرير الشامل
+              بتصميم رسمي وتحليل مختلف لكل منهما.
+            </p>
+
+          </div>
+
+        </div>
+
+
+        <div class="report-type-selector">
+
+          <label class="report-type-card">
+
+            <input
+              type="radio"
+              name="mainReportMode"
+              value="monthly"
+              checked
+            >
+
+            <span class="report-number">
+              01
+            </span>
+
+            <strong>
+              التقرير الشهري
+            </strong>
+
+            <small>
+              متابعة تشغيلية، مقارنة شهرية،
+              احتياجات وأولويات الشهر التالي.
+            </small>
+
+          </label>
+
+
+          <label class="report-type-card">
+
+            <input
+              type="radio"
+              name="mainReportMode"
+              value="overall"
+            >
+
+            <span class="report-number">
+              02
+            </span>
+
+            <strong>
+              التقرير الشامل
+            </strong>
+
+            <small>
+              قراءة استراتيجية تراكمية،
+              اتجاهات وفجوات مستمرة وتحسن.
+            </small>
+
+          </label>
+
+        </div>
+
+
+        <div class="report-controls-grid">
+
+          <label id="reportMonthWrap">
+
+            الشهر
+
+            <select id="reportMonth">
+
+              <option value="">
+                اختاري الشهر
+              </option>
+
+            </select>
+
+          </label>
+
+
+          <label>
+            القسم
+            <select id="reportDeptFilter">
+              <option value="">المدرسة كاملة</option>
+            </select>
+          </label>
+
+          <label>
+            المعلمة
+            <select id="reportTeacherFilter">
+              <option value="">كل المعلمات</option>
+            </select>
+          </label>
+
+          <label>
+            نمو من شهر
+            <select id="reportFromMonth">
+              <option value="">أول شهر متاح</option>
+            </select>
+          </label>
+
+          <label>
+            نمو إلى شهر
+            <select id="reportToMonth">
+              <option value="">آخر شهر متاح</option>
+            </select>
+          </label>
+
+
+          <label>
+
+            مستوى التقرير
+
+            <select id="reportType">
+
+              <option value="executive">
+                تقرير تنفيذي
+              </option>
+
+              <option value="internal">
+                تقرير متابعة داخلي
+              </option>
+
+            </select>
+
+          </label>
+
+
+          <button
+            id="generateReport"
+            class="btn btn-primary"
+          >
+            إنشاء التقرير
+          </button>
+
+
+          <button
+            id="generateNarrative"
+            class="btn btn-soft"
+          >
+            إعداد الملخص والتوصيات
+          </button>
+
+
+          <button
+            id="printReport"
+            class="btn btn-dark"
+          >
+            طباعة / PDF
+          </button>
+
+        </div>
+
+
+        <div
+          id="narrativeStatus"
+          class="message"
+        ></div>
+
+      </article>
+
+
+      <div
+        id="reportOutput"
+        class="official-report-wrapper"
+      ></div>
+
+    </section>
+
+
+    <!-- =====================================================
+         USERS
+    ====================================================== -->
+
+    <section
+      id="usersView"
+      class="view hidden"
+    >
+
+      <article class="panel">
+
+        <div class="panel-head">
+
+          <div>
+
+            <h3>
+              إدارة المستخدمين والمقيمين
+            </h3>
+
+            <p>
+              إدارة الأدوار ومستويات القيادة.
+            </p>
+
+          </div>
+
+        </div>
+
+
+        <div class="leadership-note">
+
+          <strong>
+            مستويات القيادة
+          </strong>
+
+          <p>
+            يجب أن يظهر اسم المقيم ومستواه القيادي
+            بوضوح في الزيارة والتقارير.
+          </p>
+
+
+          <div class="leadership-levels">
+
+            <span>
+              قيادة عليا
+            </span>
+
+            <span>
+              قيادة وسطى
+            </span>
+
+          </div>
+
+        </div>
+
+
+        <div id="usersContent"></div>
+
+      </article>
+
+    </section>
+
+
+    <!-- =====================================================
+         MASTER DATA
+    ====================================================== -->
+
+    <section
+      id="masterdataView"
+      class="view hidden"
+    >
+
+      <div class="dashboard-grid two">
+
+        <article class="panel">
+
+          <div class="panel-head">
+
+            <h3>
+              ملخص البيانات الأساسية
+            </h3>
+
+          </div>
+
+
+          <div id="masterSummary"></div>
+
+        </article>
+
+
+        <article class="panel">
+
+          <div class="panel-head">
+
+            <h3>
+              إضافة معلمة
+            </h3>
+
+          </div>
+
+
+          <form id="teacherForm">
+
+            <label>
+
+              اسم المعلمة
+
+              <input
+                id="newTeacherName"
+                type="text"
+                required
+              >
+
+            </label>
+
+
+            <button
+              class="btn btn-primary"
+              type="submit"
+            >
+              إضافة
+            </button>
+
+
+            <div
+              id="teacherMsg"
+              class="message"
+            ></div>
+
+          </form>
+
+        </article>
+
+
+        <article class="panel">
+
+          <div class="panel-head">
+
+            <h3>
+              إضافة قسم
+            </h3>
+
+          </div>
+
+
+          <form id="deptForm">
+
+            <label>
+
+              اسم القسم
+
+              <input
+                id="newDeptName"
+                type="text"
+                required
+              >
+
+            </label>
+
+
+            <button
+              class="btn btn-primary"
+              type="submit"
+            >
+              إضافة
+            </button>
+
+
+            <div
+              id="deptMsg"
+              class="message"
+            ></div>
+
+          </form>
+
+        </article>
+
+
+        <article class="panel">
+
+          <div class="panel-head">
+
+            <h3>
+              إضافة مادة
+            </h3>
+
+          </div>
+
+
+          <form id="subjectForm">
+
+            <label>
+
+              القسم
+
+              <select
+                id="newSubjectDept"
+                required
+              >
+
+                <option value="">
+                  اختاري القسم
+                </option>
+
+              </select>
+
+            </label>
+
+
+            <label>
+
+              اسم المادة
+
+              <input
+                id="newSubjectName"
+                type="text"
+                required
+              >
+
+            </label>
+
+
+            <button
+              class="btn btn-primary"
+              type="submit"
+            >
+              إضافة
+            </button>
+
+
+            <div
+              id="subjectMsg"
+              class="message"
+            ></div>
+
+          </form>
+
+        </article>
+
+      </div>
+
+    </section>
+
+  </main>
+
+
+  <!-- =====================================================
+       MODAL ROOT
+  ====================================================== -->
+
+  <div id="modalRoot"></div>
+
+
+  <script src="app.js"></script>
+
+</body>
+
+</html>

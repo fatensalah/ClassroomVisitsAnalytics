@@ -1,0 +1,12 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تسجيل الدخول | تحليل الزيارات الصفية</title><link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="config.js"></script></head>
+<body class="login-body"><main class="login-card"><div class="brand-mark">CV</div><h1>منظومة تحليل الزيارات الصفية</h1>
+<p class="muted">دخول القيادة المدرسية</p><form id="loginForm" class="stack"><label>البريد الإلكتروني<input id="email" type="email" required autocomplete="username"></label>
+<label>كلمة المرور<input id="password" type="password" required autocomplete="current-password"></label><button class="btn btn-primary" type="submit">تسجيل الدخول</button><div id="msg" class="message"></div></form></main>
+<script>
+const sb=supabase.createClient(APP_CONFIG.supabaseUrl,APP_CONFIG.supabaseKey);
+(async()=>{const {data:{session}}=await sb.auth.getSession();if(session)location.href="app.html"})();
+loginForm.onsubmit=async e=>{e.preventDefault();msg.textContent="جاري تسجيل الدخول...";const {error}=await sb.auth.signInWithPassword({email:email.value.trim(),password:password.value});
+if(error){msg.textContent="تعذر تسجيل الدخول: "+error.message;msg.className="message danger"}else location.href="app.html";}
+</script></body></html>
