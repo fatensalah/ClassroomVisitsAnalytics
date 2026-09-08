@@ -1,12 +1,460 @@
-<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>تسجيل الدخول | تحليل الزيارات الصفية</title><link rel="stylesheet" href="style.css">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="config.js"></script></head>
-<body class="login-body"><main class="login-card"><div class="brand-mark">CV</div><h1>منظومة تحليل الزيارات الصفية</h1>
-<p class="muted">دخول القيادة المدرسية</p><form id="loginForm" class="stack"><label>البريد الإلكتروني<input id="email" type="email" required autocomplete="username"></label>
-<label>كلمة المرور<input id="password" type="password" required autocomplete="current-password"></label><button class="btn btn-primary" type="submit">تسجيل الدخول</button><div id="msg" class="message"></div></form></main>
-<script>
-const sb=supabase.createClient(APP_CONFIG.supabaseUrl,APP_CONFIG.supabaseKey);
-(async()=>{const {data:{session}}=await sb.auth.getSession();if(session)location.href="app.html"})();
-loginForm.onsubmit=async e=>{e.preventDefault();msg.textContent="جاري تسجيل الدخول...";const {error}=await sb.auth.signInWithPassword({email:email.value.trim(),password:password.value});
-if(error){msg.textContent="تعذر تسجيل الدخول: "+error.message;msg.className="message danger"}else location.href="app.html";}
-</script></body></html>
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>تسجيل الدخول | منظومة تحليل الزيارات الصفية</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <style>
+    :root{
+      --teal:#0f4f55;
+      --teal-2:#14656a;
+      --teal-3:#0a3e45;
+      --cream:#f5f1e8;
+      --gold:#c6a45c;
+      --ink:#17363b;
+      --muted:#6e8084;
+      --line:rgba(17,79,85,.12);
+      --danger:#a63c3c;
+      --success:#1d6b4d;
+      --white:#fff;
+      --shadow:0 30px 80px rgba(18,52,58,.16);
+    }
+
+    *{box-sizing:border-box}
+
+    html,body{min-height:100%}
+
+    body{
+      margin:0;
+      font-family:"Segoe UI",Tahoma,Arial,sans-serif;
+      color:var(--ink);
+      background:
+        radial-gradient(circle at 12% 15%, rgba(198,164,92,.13), transparent 27%),
+        radial-gradient(circle at 88% 82%, rgba(20,101,106,.11), transparent 30%),
+        linear-gradient(145deg,#f7f4ed 0%,#edf4f3 56%,#e8f0ef 100%);
+      display:grid;
+      place-items:center;
+      padding:30px;
+      overflow-x:hidden;
+    }
+
+    body::before{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      background-image:
+        linear-gradient(rgba(15,79,85,.018) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(15,79,85,.018) 1px,transparent 1px);
+      background-size:32px 32px;
+    }
+
+    .shell{
+      width:min(1120px,100%);
+      min-height:650px;
+      display:grid;
+      grid-template-columns:1.05fr .95fr;
+      background:rgba(255,255,255,.94);
+      border:1px solid rgba(255,255,255,.82);
+      border-radius:30px;
+      overflow:hidden;
+      box-shadow:var(--shadow);
+      position:relative;
+      z-index:1;
+    }
+
+    .intro{
+      position:relative;
+      padding:54px 52px 46px;
+      background:
+        radial-gradient(circle at 15% 20%,rgba(255,255,255,.11),transparent 26%),
+        radial-gradient(circle at 88% 80%,rgba(198,164,92,.22),transparent 26%),
+        linear-gradient(150deg,var(--teal-3),var(--teal) 54%,var(--teal-2));
+      color:#fff;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      overflow:hidden;
+    }
+
+    .intro::after{
+      content:"";
+      position:absolute;
+      width:290px;
+      height:290px;
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:50%;
+      left:-110px;
+      bottom:-110px;
+      box-shadow:0 0 0 48px rgba(255,255,255,.025),0 0 0 96px rgba(255,255,255,.018);
+    }
+
+    .school-strip{
+      width:100%;
+      max-height:92px;
+      object-fit:contain;
+      object-position:center;
+      background:#fff;
+      border-radius:16px;
+      padding:8px 12px;
+      margin-bottom:34px;
+      box-shadow:0 8px 28px rgba(0,0,0,.12);
+    }
+
+    .eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      font-size:.76rem;
+      letter-spacing:.12em;
+      font-weight:800;
+      opacity:.82;
+      margin-bottom:14px;
+    }
+
+    .eyebrow::before{
+      content:"";
+      width:24px;
+      height:2px;
+      background:var(--gold);
+      border-radius:2px;
+    }
+
+    .intro h1{
+      margin:0;
+      font-size:clamp(2rem,3.4vw,3.15rem);
+      line-height:1.35;
+      letter-spacing:-.03em;
+    }
+
+    .intro .lead{
+      margin:18px 0 0;
+      max-width:520px;
+      line-height:2;
+      color:rgba(255,255,255,.78);
+      font-size:1rem;
+    }
+
+    .feature-grid{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:10px;
+      margin-top:34px;
+      position:relative;
+      z-index:2;
+    }
+
+    .feature{
+      padding:14px 12px;
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:15px;
+      background:rgba(255,255,255,.065);
+      backdrop-filter:blur(8px);
+      text-align:center;
+      font-size:.82rem;
+      line-height:1.65;
+    }
+
+    .feature strong{
+      display:block;
+      color:#f2dca9;
+      font-size:.92rem;
+      margin-bottom:2px;
+    }
+
+    .intro-footer{
+      margin-top:38px;
+      display:flex;
+      justify-content:space-between;
+      gap:15px;
+      align-items:end;
+      color:rgba(255,255,255,.68);
+      font-size:.78rem;
+      position:relative;
+      z-index:2;
+    }
+
+    .login-side{
+      padding:58px 58px 48px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:linear-gradient(180deg,rgba(255,255,255,.96),rgba(250,252,251,.98));
+    }
+
+    .login-card{width:min(410px,100%)}
+
+    .seal{
+      width:58px;
+      height:58px;
+      border-radius:18px;
+      display:grid;
+      place-items:center;
+      background:linear-gradient(145deg,var(--teal),var(--teal-2));
+      color:white;
+      font-weight:900;
+      font-size:1.25rem;
+      box-shadow:0 12px 30px rgba(15,79,85,.2);
+      margin-bottom:23px;
+    }
+
+    .login-card h2{
+      margin:0;
+      color:var(--teal-3);
+      font-size:2rem;
+      letter-spacing:-.02em;
+    }
+
+    .login-card .sub{
+      margin:9px 0 30px;
+      color:var(--muted);
+      line-height:1.8;
+      font-size:.94rem;
+    }
+
+    .field{margin-bottom:18px}
+
+    .field label{
+      display:block;
+      font-size:.88rem;
+      font-weight:800;
+      margin-bottom:8px;
+      color:#294b50;
+    }
+
+    .input-wrap{position:relative}
+
+    .input-wrap input{
+      width:100%;
+      height:52px;
+      border:1px solid #d8e2e1;
+      background:#fff;
+      border-radius:14px;
+      padding:0 15px;
+      font:inherit;
+      color:var(--ink);
+      outline:none;
+      transition:.2s ease;
+    }
+
+    .input-wrap input:focus{
+      border-color:#6ba4a7;
+      box-shadow:0 0 0 4px rgba(20,101,106,.09);
+    }
+
+    .input-wrap input[type=email]{direction:ltr;text-align:left;padding-left:15px}
+
+    .password-input{padding-left:52px!important}
+
+    .toggle-pass{
+      position:absolute;
+      left:8px;
+      top:50%;
+      transform:translateY(-50%);
+      width:38px;
+      height:38px;
+      border:0;
+      background:transparent;
+      color:#58767a;
+      cursor:pointer;
+      border-radius:10px;
+      font-size:1rem;
+    }
+
+    .toggle-pass:hover{background:#eef5f4}
+
+    .login-btn{
+      width:100%;
+      height:54px;
+      border:0;
+      border-radius:14px;
+      background:linear-gradient(135deg,var(--teal-3),var(--teal-2));
+      color:#fff;
+      font:inherit;
+      font-weight:900;
+      cursor:pointer;
+      margin-top:5px;
+      box-shadow:0 12px 28px rgba(15,79,85,.2);
+      transition:transform .15s ease,box-shadow .15s ease;
+    }
+
+    .login-btn:hover{transform:translateY(-1px);box-shadow:0 16px 32px rgba(15,79,85,.24)}
+    .login-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+
+    .message{
+      min-height:23px;
+      margin-top:14px;
+      border-radius:12px;
+      font-size:.87rem;
+      line-height:1.6;
+      text-align:center;
+      padding:0;
+    }
+
+    .message.error{padding:10px 12px;background:#fff1f1;color:var(--danger);border:1px solid #f1d1d1}
+    .message.success{padding:10px 12px;background:#eef8f3;color:var(--success);border:1px solid #cae8d8}
+
+    .security-note{
+      display:flex;
+      align-items:flex-start;
+      gap:9px;
+      margin-top:24px;
+      padding-top:20px;
+      border-top:1px solid var(--line);
+      color:#738589;
+      font-size:.78rem;
+      line-height:1.7;
+    }
+
+    .security-dot{
+      width:8px;height:8px;border-radius:50%;background:var(--gold);margin-top:6px;flex:0 0 auto;
+    }
+
+    .small-brand{
+      display:none;
+      text-align:center;
+      margin-bottom:24px;
+    }
+
+    .small-brand img{
+      max-width:100%;
+      max-height:74px;
+      object-fit:contain;
+    }
+
+    @media(max-width:860px){
+      body{padding:16px}
+      .shell{grid-template-columns:1fr;min-height:auto;border-radius:24px}
+      .intro{display:none}
+      .login-side{padding:38px 26px 32px;min-height:calc(100vh - 32px)}
+      .small-brand{display:block}
+      .login-card h2{text-align:center;font-size:1.75rem}
+      .login-card .sub{text-align:center}
+      .seal{margin:0 auto 18px}
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="intro" aria-label="نبذة عن المنظومة">
+      <div>
+        <img class="school-strip" src="school-header.jpg" alt="الترويسة الرسمية للمدرسة">
+        <span class="eyebrow">CLASSROOM VISITS ANALYTICS</span>
+        <h1>منظومة تحليل<br>الزيارات الصفية</h1>
+        <p class="lead">بيئة رقمية موحدة لدعم القيادة المدرسية في توثيق الزيارات، قراءة مؤشرات الأداء، متابعة النمو، وتحويل البيانات إلى قرارات متابعة واضحة.</p>
+        <div class="feature-grid">
+          <div class="feature"><strong>تحليل</strong>المعايير والمؤشرات</div>
+          <div class="feature"><strong>متابعة</strong>النمو والدعم</div>
+          <div class="feature"><strong>قرار</strong>تقارير قيادية</div>
+        </div>
+      </div>
+      <div class="intro-footer">
+        <span>العام الدراسي 2026–2027</span>
+        <span>مدرسة الرفاع الغربي الابتدائية للبنين</span>
+      </div>
+    </section>
+
+    <section class="login-side">
+      <div class="login-card">
+        <div class="small-brand"><img src="school-header.jpg" alt="الترويسة الرسمية للمدرسة"></div>
+        <div class="seal">CV</div>
+        <h2>تسجيل الدخول</h2>
+        <p class="sub">دخول القيادة المدرسية إلى منظومة تحليل الزيارات الصفية.</p>
+
+        <form id="loginForm" novalidate>
+          <div class="field">
+            <label for="email">البريد الإلكتروني</label>
+            <div class="input-wrap">
+              <input id="email" type="email" autocomplete="username" placeholder="name@moe.bh" required>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="password">كلمة المرور</label>
+            <div class="input-wrap">
+              <input id="password" class="password-input" type="password" autocomplete="current-password" placeholder="أدخلي كلمة المرور" required>
+              <button id="togglePassword" class="toggle-pass" type="button" aria-label="إظهار كلمة المرور" title="إظهار/إخفاء كلمة المرور">◉</button>
+            </div>
+          </div>
+
+          <button id="loginBtn" class="login-btn" type="submit">تسجيل الدخول</button>
+          <div id="loginMessage" class="message" role="status" aria-live="polite"></div>
+        </form>
+
+        <div class="security-note">
+          <span class="security-dot"></span>
+          <span>الدخول مخصص للمستخدمين المعتمدين فقط. يتم التحقق من الحساب والصلاحية عبر Supabase Authentication.</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const sb = supabase.createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey);
+    const form = document.getElementById("loginForm");
+    const emailInput = document.getElementById("email");
+    const passwordInput = document.getElementById("password");
+    const loginBtn = document.getElementById("loginBtn");
+    const message = document.getElementById("loginMessage");
+    const togglePassword = document.getElementById("togglePassword");
+
+    function showMessage(text, kind = "error") {
+      message.textContent = text || "";
+      message.className = text ? `message ${kind}` : "message";
+    }
+
+    function arabicLoginError(error) {
+      const raw = String(error?.message || "").toLowerCase();
+      if (raw.includes("invalid login credentials")) return "البريد الإلكتروني أو كلمة المرور غير صحيحة.";
+      if (raw.includes("email not confirmed")) return "الحساب لم يتم تأكيده بعد.";
+      if (raw.includes("too many requests") || raw.includes("rate limit")) return "تمت محاولات كثيرة. حاولي مرة أخرى بعد قليل.";
+      return error?.message || "تعذر تسجيل الدخول. حاولي مرة أخرى.";
+    }
+
+    togglePassword.addEventListener("click", () => {
+      const show = passwordInput.type === "password";
+      passwordInput.type = show ? "text" : "password";
+      togglePassword.textContent = show ? "◎" : "◉";
+      togglePassword.setAttribute("aria-label", show ? "إخفاء كلمة المرور" : "إظهار كلمة المرور");
+    });
+
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+      const email = emailInput.value.trim().toLowerCase();
+      const password = passwordInput.value;
+
+      if (!email || !password) {
+        showMessage("أدخلي البريد الإلكتروني وكلمة المرور.");
+        return;
+      }
+
+      try {
+        loginBtn.disabled = true;
+        loginBtn.textContent = "جاري تسجيل الدخول...";
+        showMessage("");
+
+        const { data, error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        if (!data?.user) throw new Error("تعذر التحقق من الحساب.");
+
+        showMessage("تم تسجيل الدخول بنجاح.", "success");
+        window.location.replace("app.html");
+      } catch (error) {
+        showMessage(arabicLoginError(error));
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = "تسجيل الدخول";
+      }
+    });
+
+    (async () => {
+      const { data } = await sb.auth.getSession();
+      if (data?.session?.user) {
+        window.location.replace("app.html");
+      }
+    })();
+  </script>
+</body>
+</html>
