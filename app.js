@@ -8356,9 +8356,13 @@ function renderUsers() {
     `
       <div class="panel">
 
-        <h3>
-          إضافة مستخدم
-        </h3>
+        <div class="panel-head">
+          <div>
+            <span class="panel-kicker">USER ACCESS</span>
+            <h3>إضافة مستخدم جديد</h3>
+            <p>أنشئي الحساب ببريد المستخدم وكلمة مرور مؤقتة. لا يتم حفظ كلمة المرور داخل جدول profiles.</p>
+          </div>
+        </div>
 
         <form
           id="platformUserForm"
@@ -8367,87 +8371,77 @@ function renderUsers() {
           <div class="form-grid three">
 
             <label>
-
               الاسم
-
               <input
                 id="platformUserName"
+                autocomplete="off"
                 required
               >
-
             </label>
 
-
             <label>
-
-              البريد
-
+              البريد الإلكتروني
               <input
                 id="platformUserEmail"
                 type="email"
+                dir="ltr"
+                autocomplete="off"
                 required
               >
-
             </label>
 
-
             <label>
-
-              الصفة
-
+              الصفة الوظيفية
               <select
                 id="platformUserJobTitle"
                 required
               >
-
-                <option value="">
-                  اختاري الصفة
-                </option>
-
-                <option>
-                  مديرة المدرسة
-                </option>
-
-                <option>
-                  مديرة مساعدة
-                </option>
-
-                <option>
-                  منسقة قسم
-                </option>
-
-                <option>
-                  مسؤولة النظام
-                </option>
-
+                <option value="">اختاري الصفة</option>
+                <option>مديرة المدرسة</option>
+                <option>مديرة مساعدة</option>
+                <option>منسقة قسم</option>
+                <option>مسؤولة النظام</option>
               </select>
-
             </label>
-
 
             <label
               id="platformUserDeptWrap"
               class="hidden"
             >
-
               القسم
-
               <select
                 id="platformUserDepartment"
               >
-
-                <option value="">
-                  اختاري القسم
-                </option>
-
+                <option value="">اختاري القسم</option>
                 ${departmentOptions}
-
               </select>
+            </label>
 
+            <label>
+              كلمة المرور المؤقتة
+              <input
+                id="platformUserPassword"
+                type="password"
+                minlength="8"
+                autocomplete="new-password"
+                placeholder="8 أحرف على الأقل"
+                required
+              >
+            </label>
+
+            <label>
+              تأكيد كلمة المرور
+              <input
+                id="platformUserPasswordConfirm"
+                type="password"
+                minlength="8"
+                autocomplete="new-password"
+                placeholder="أعيدي كتابة كلمة المرور"
+                required
+              >
             </label>
 
           </div>
-
 
           <div
             id="platformUserAutoLevel"
@@ -8456,9 +8450,11 @@ function renderUsers() {
             المستوى القيادي يحدد تلقائيًا.
           </div>
 
+          <div class="analysis-note">
+            كلمة المرور تُرسل إلى Supabase Auth فقط ولا تُخزن في بيانات المنصة.
+          </div>
 
           <div class="form-actions">
-
             <button
               id="platformUserSubmit"
               class="btn btn-primary"
@@ -8466,9 +8462,7 @@ function renderUsers() {
             >
               إضافة المستخدم
             </button>
-
           </div>
-
 
           <div
             id="platformUserMsg"
@@ -8482,16 +8476,19 @@ function renderUsers() {
 
       <div class="panel">
 
-        <h3>
-          المستخدمون المسجلون
-        </h3>
+        <div class="panel-head">
+          <div>
+            <span class="panel-kicker">REGISTERED USERS</span>
+            <h3>المستخدمون المسجلون</h3>
+            <p>يمكن لمسؤولة النظام تعيين كلمة مرور جديدة لأي حساب عند الحاجة.</p>
+          </div>
+        </div>
 
         <div class="table-wrap">
 
           <table>
 
             <thead>
-
               <tr>
                 <th>الاسم</th>
                 <th>البريد</th>
@@ -8499,82 +8496,60 @@ function renderUsers() {
                 <th>المستوى القيادي</th>
                 <th>القسم</th>
                 <th>الحالة</th>
+                <th>إجراء الدخول</th>
               </tr>
-
             </thead>
 
             <tbody>
-
               ${
                 profiles
                   .map(
                     profile => `
                       <tr>
-
-                        <td>
-                          ${esc(
-                            profile.full_name ||
-                            "—"
-                          )}
-                        </td>
-
-                        <td dir="ltr">
-                          ${esc(
-                            profile.email ||
-                            "—"
-                          )}
-                        </td>
-
+                        <td>${esc(profile.full_name || "—")}</td>
+                        <td dir="ltr">${esc(profile.email || "—")}</td>
                         <td>
                           ${esc(
                             profile.job_title ||
                             (
-                              profile.role ===
-                              "admin"
+                              profile.role === "admin"
                                 ? "مسؤولة النظام"
                                 : "—"
                             )
                           )}
                         </td>
-
-                        <td>
-                          ${esc(
-                            leadershipLevel(
-                              profile
-                            )
-                          )}
-                        </td>
-
+                        <td>${esc(leadershipLevel(profile))}</td>
                         <td>
                           ${esc(
                             departments.find(
                               department =>
-                                String(
-                                  department.id
-                                ) ===
-                                String(
-                                  profile.department_id
-                                )
-                            )?.name ||
-                            "—"
+                                String(department.id) ===
+                                String(profile.department_id)
+                            )?.name || "—"
                           )}
                         </td>
-
                         <td>
                           ${
-                            profile.active ===
-                            false
+                            profile.active === false
                               ? "غير نشط"
                               : "نشط"
                           }
                         </td>
-
+                        <td>
+                          <button
+                            type="button"
+                            class="btn btn-soft platform-password-btn"
+                            data-user-id="${esc(profile.id)}"
+                            data-user-name="${esc(profile.full_name || profile.email || "المستخدم")}" 
+                          >
+                            تعيين كلمة مرور
+                          </button>
+                        </td>
                       </tr>
                     `
                   )
                   .join("")
               }
-
             </tbody>
 
           </table>
@@ -8613,24 +8588,20 @@ function renderUsers() {
         "يحدد تلقائيًا";
 
       if (
-        job ===
-          "مديرة المدرسة" ||
-        job ===
-          "مديرة مساعدة"
+        job === "مديرة المدرسة" ||
+        job === "مديرة مساعدة"
       ) {
         level =
           "قيادة عليا";
       }
       else if (
-        job ===
-        "منسقة قسم"
+        job === "منسقة قسم"
       ) {
         level =
           "قيادة وسطى";
       }
       else if (
-        job ===
-        "مسؤولة النظام"
+        job === "مسؤولة النظام"
       ) {
         level =
           "لا ينطبق";
@@ -8674,13 +8645,20 @@ function renderUsers() {
             .value;
 
         const department_id =
-          job_title ===
-          "منسقة قسم"
+          job_title === "منسقة قسم"
             ? num(
                 $("platformUserDepartment")
                   .value
               )
             : null;
+
+        const password =
+          $("platformUserPassword")
+            .value;
+
+        const passwordConfirm =
+          $("platformUserPasswordConfirm")
+            .value;
 
         const message =
           $("platformUserMsg");
@@ -8689,23 +8667,40 @@ function renderUsers() {
           $("platformUserSubmit");
 
         if (
-          job_title ===
-            "منسقة قسم" &&
+          job_title === "منسقة قسم" &&
           !department_id
         ) {
           message.className =
             "message danger";
-
           message.textContent =
             "اختاري القسم للمنسقة.";
+          return;
+        }
 
+        if (
+          password.length < 8
+        ) {
+          message.className =
+            "message danger";
+          message.textContent =
+            "كلمة المرور يجب أن تكون 8 أحرف على الأقل.";
+          return;
+        }
+
+        if (
+          password !==
+          passwordConfirm
+        ) {
+          message.className =
+            "message danger";
+          message.textContent =
+            "كلمتا المرور غير متطابقتين.";
           return;
         }
 
         try {
           button.disabled =
             true;
-
           button.textContent =
             "جاري الإنشاء...";
 
@@ -8717,23 +8712,21 @@ function renderUsers() {
               "manage-users",
               {
                 body: {
+                  action: "create",
                   full_name,
                   email,
                   job_title,
-                  department_id
+                  department_id,
+                  password
                 }
               }
             );
 
-          if (
-            error
-          ) {
+          if (error) {
             throw error;
           }
 
-          if (
-            !data?.ok
-          ) {
+          if (!data?.ok) {
             throw new Error(
               data?.error ||
               "تعذر إنشاء المستخدم."
@@ -8742,38 +8735,129 @@ function renderUsers() {
 
           message.className =
             "message success";
-
           message.textContent =
-            "تم إنشاء المستخدم. ملاحظة: إرسال رسالة الدخول بالبريد يحتاج إعداد OTP/SMTP في المرحلة التالية.";
+            "تم إنشاء المستخدم بنجاح ويمكنه تسجيل الدخول بالبريد وكلمة المرور المحددة.";
 
           await loadAll();
-
           fillUI();
-
           renderUsers();
         }
-        catch (
-          error
-        ) {
+        catch (error) {
           message.className =
             "message danger";
-
           message.textContent =
             error.message ||
             "تعذر إنشاء المستخدم.";
         }
         finally {
-          if (
-            button
-          ) {
+          if (button) {
             button.disabled =
               false;
-
             button.textContent =
               "إضافة المستخدم";
           }
         }
       }
+    );
+
+  document
+    .querySelectorAll(
+      ".platform-password-btn"
+    )
+    .forEach(
+      button =>
+        button.addEventListener(
+          "click",
+          async () => {
+            const userId =
+              button.dataset.userId;
+            const userName =
+              button.dataset.userName ||
+              "المستخدم";
+
+            const password =
+              window.prompt(
+                `اكتبي كلمة المرور الجديدة لـ ${userName} (8 أحرف على الأقل):`
+              );
+
+            if (password === null) {
+              return;
+            }
+
+            if (
+              password.length < 8
+            ) {
+              alert(
+                "كلمة المرور يجب أن تكون 8 أحرف على الأقل."
+              );
+              return;
+            }
+
+            const confirmPassword =
+              window.prompt(
+                "أعيدي كتابة كلمة المرور للتأكيد:"
+              );
+
+            if (
+              confirmPassword !==
+              password
+            ) {
+              alert(
+                "كلمتا المرور غير متطابقتين."
+              );
+              return;
+            }
+
+            try {
+              button.disabled =
+                true;
+              button.textContent =
+                "جاري الحفظ...";
+
+              const {
+                data,
+                error
+              } =
+                await sb.functions.invoke(
+                  "manage-users",
+                  {
+                    body: {
+                      action: "set-password",
+                      user_id: userId,
+                      password
+                    }
+                  }
+                );
+
+              if (error) {
+                throw error;
+              }
+
+              if (!data?.ok) {
+                throw new Error(
+                  data?.error ||
+                  "تعذر تحديث كلمة المرور."
+                );
+              }
+
+              alert(
+                `تم تعيين كلمة المرور لـ ${userName} بنجاح.`
+              );
+            }
+            catch (error) {
+              alert(
+                error.message ||
+                "تعذر تحديث كلمة المرور."
+              );
+            }
+            finally {
+              button.disabled =
+                false;
+              button.textContent =
+                "تعيين كلمة مرور";
+            }
+          }
+        )
     );
 }
 
