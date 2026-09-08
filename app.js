@@ -4678,18 +4678,11 @@ function renderHistory() {
                           طباعة الاستمارة
                         </button>
 
-                        ${
-                          currentProfile?.role ===
-                          "admin"
-                            ? `
-                                <button
-                                  onclick="deleteVisit('${visit.id}')"
-                                >
-                                  حذف
-                                </button>
-                              `
-                            : ""
-                        }
+                        <button
+                          onclick="deleteVisit('${visit.id}')"
+                        >
+                          حذف
+                        </button>
 
                       </td>
 
@@ -7161,13 +7154,6 @@ window.deleteVisit =
   async function (
     id
   ) {
-    if (
-      currentProfile?.role !==
-      "admin"
-    ) {
-      return;
-    }
-
     if (
       !confirm(
         "هل أنتِ متأكدة من حذف الزيارة؟"
