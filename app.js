@@ -3844,6 +3844,1302 @@ function listCards(
    DASHBOARD
 ========================================================= */
 
+
+/* =========================================================
+   DEPARTMENT PERFORMANCE READINGS
+   قراءة تشغيلية داخلية حسب الأقسام
+========================================================= */
+
+function teacherPerformanceReading(teacherVisits) {
+  const ordered = teacherVisits
+    .filter(v => num(v.overall_rating) >= 1 && num(v.overall_rating) <= 4)
+    .slice()
+    .sort((a, b) => String(a.visit_date).localeCompare(String(b.visit_date)));
+
+  if (!ordered.length) return null;
+
+  if (ordered.length === 1) {
+    return {
+      key: "initial",
+      label: "قراءة أولية – تحتاج زيارة متابعة"
+    };
+  }
+
+  const levels = ordered.map(v => num(v.overall_rating));
+  const latest = levels[levels.length - 1];
+  const previous = levels[levels.length - 2];
+  const levelOneCount = levels.filter(level => level === 1).length;
+
+  if (latest === 1 || levelOneCount >= 2) {
+    return {
+      key: "priority",
+      label: "أولوية للتحسين"
+    };
+  }
+
+  if (latest >= 3 && previous >= 3 && latest >= previous) {
+    return {
+      key: "stableHigh",
+      label: "أداء مرتفع ومستقر"
+    };
+  }
+
+  return {
+    key: "developing",
+    label: "أداء نامٍ"
+  };
+}
+
+function departmentPerformanceReadings(rows) {
+  const map = maps();
+  const departmentIds = [
+    ...new Set(
+      rows
+        .map(visit => String(visit.department_id || ""))
+        .filter(Boolean)
+    )
+  ];
+
+  return departmentIds
+    .map(departmentId => {
+      const departmentRows = rows.filter(
+        visit => String(visit.department_id) === departmentId
+      );
+
+      const teacherIds = [
+        ...new Set(
+          departmentRows
+            .map(visit => String(visit.teacher_id || ""))
+            .filter(Boolean)
+        )
+      ];
+
+      const counts = {
+        stableHigh: 0,
+        developing: 0,
+        priority: 0,
+        initial: 0
+      };
+
+      teacherIds.forEach(teacherId => {
+        const reading = teacherPerformanceReading(
+          departmentRows.filter(
+            visit => String(visit.teacher_id) === teacherId
+          )
+        );
+        if (reading) counts[reading.key]++;
+      });
+
+      return {
+        departmentId,
+        departmentName:
+          map.departments[departmentId]?.name || "قسم غير محدد",
+        total: teacherIds.length,
+        ...counts
+      };
+    })
+    .sort((a, b) => a.departmentName.localeCompare(b.departmentName, "ar"));
+}
+
+function departmentPerformanceReadingsHTML(rows, options = {}) {
+  const data = departmentPerformanceReadings(rows);
+  const compact = options.compact === true;
+
+  if (!data.length) {
+    return `
+      <div class="empty-state">
+        لا تتوافر بيانات زيارات كافية لإظهار قراءة مستويات الأداء حسب الأقسام.
+      </div>
+    `;
+  }
+
+  const totals = data.reduce(
+    (acc, item) => {
+      acc.stableHigh += item.stableHigh;
+      acc.developing += item.developing;
+      acc.priority += item.priority;
+      acc.initial += item.initial;
+      acc.total += item.total;
+      return acc;
+    },
+    { stableHigh: 0, developing: 0, priority: 0, initial: 0, total: 0 }
+  );
+
+  return `
+    <div class="department-performance-reading">
+      ${
+        compact
+          ? ""
+          : `
+              <p class="analysis-note">
+                قراءة تشغيلية مستندة إلى الزيارات المسجلة، وتُظهر عدد المعلمات المرصودات في كل قسم حسب مسار الأداء. لا تُعد حكمًا منفصلًا عن استمارة الزيارة الصفية.
+              </p>
+            `
+      }
+
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>القسم</th>
+              <th>أداء مرتفع ومستقر</th>
+              <th>أداء نامٍ</th>
+              <th>أولوية للتحسين</th>
+              <th>قراءة أولية</th>
+              <th>إجمالي المعلمات المرصودات</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data
+              .map(
+                item => `
+                  <tr>
+                    <td><strong>${esc(item.departmentName)}</strong></td>
+                    <td>${item.stableHigh || "—"}</td>
+                    <td>${item.developing || "—"}</td>
+                    <td>${item.priority || "—"}</td>
+                    <td>${item.initial || "—"}</td>
+                    <td><strong>${item.total}</strong></td>
+                  </tr>
+                `
+              )
+              .join("")}
+            <tr>
+              <td><strong>المجموع الكلي</strong></td>
+              <td><strong>${totals.stableHigh || "—"}</strong></td>
+              <td><strong>${totals.developing || "—"}</strong></td>
+              <td><strong>${totals.priority || "—"}</strong></td>
+              <td><strong>${totals.initial || "—"}</strong></td>
+              <td><strong>${totals.total}</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+
+/* =========================================================
+   QUALITY CARD READINGS
+   قراءات بطاقة الجودة
+========================================================= */
+
+function qualityNormalizeText(value = "") {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function qualitySubjectName(visit) {
+  const subject =
+    subjects.find(
+      item =>
+        String(item.id) ===
+        String(visit?.subject_id)
+    );
+
+  return subject?.name || "";
+}
+
+function qualityIsBasicSubjectName(name) {
+  const n = qualityNormalizeText(name);
+
+  return [
+    "اللغه العربيه",
+    "عربي",
+    "اللغه الانجليزيه",
+    "انجليزي",
+    "الرياضيات",
+    "رياضيات",
+    "العلوم",
+    "علوم",
+    "معلم الفصل",
+    "نظام فصل"
+  ].some(
+    key =>
+      n.includes(
+        qualityNormalizeText(key)
+      )
+  );
+}
+
+function qualityRowsByBasicGroup(
+  rows,
+  basic = true
+) {
+  return rows.filter(
+    visit => {
+      const name =
+        qualitySubjectName(
+          visit
+        );
+
+      if (!name) {
+        return false;
+      }
+
+      return (
+        qualityIsBasicSubjectName(
+          name
+        ) ===
+        basic
+      );
+    }
+  );
+}
+
+function qualityMonthRows(
+  rows,
+  month
+) {
+  return rows.filter(
+    visit =>
+      monthKey(
+        visit.visit_date
+      ) ===
+      month
+  );
+}
+
+function qualityRatingShare(
+  rows,
+  acceptedLevels
+) {
+  const valid =
+    rows.filter(
+      visit =>
+        [1, 2, 3, 4].includes(
+          num(
+            visit.overall_rating
+          )
+        )
+    );
+
+  if (!valid.length) {
+    return {
+      count: 0,
+      total: 0,
+      rate: null
+    };
+  }
+
+  const count =
+    valid.filter(
+      visit =>
+        acceptedLevels.includes(
+          num(
+            visit.overall_rating
+          )
+        )
+    ).length;
+
+  return {
+    count,
+    total:
+      valid.length,
+    rate:
+      Math.round(
+        count /
+        valid.length *
+        1000
+      ) / 10
+  };
+}
+
+function qualityGrowthReading(
+  rows,
+  basic,
+  acceptedLevels
+) {
+  const scoped =
+    qualityRowsByBasicGroup(
+      rows,
+      basic
+    );
+
+  const months = [
+    ...new Set(
+      scoped
+        .map(
+          visit =>
+            monthKey(
+              visit.visit_date
+            )
+        )
+        .filter(Boolean)
+    )
+  ].sort();
+
+  if (!months.length) {
+    return {
+      current: null,
+      previous: null,
+      change: null,
+      currentMonth: "",
+      previousMonth: ""
+    };
+  }
+
+  const currentMonth =
+    months[
+      months.length - 1
+    ];
+
+  const previousMonth =
+    months.length > 1
+      ? months[
+          months.length - 2
+        ]
+      : "";
+
+  const current =
+    qualityRatingShare(
+      qualityMonthRows(
+        scoped,
+        currentMonth
+      ),
+      acceptedLevels
+    );
+
+  const previous =
+    previousMonth
+      ? qualityRatingShare(
+          qualityMonthRows(
+            scoped,
+            previousMonth
+          ),
+          acceptedLevels
+        )
+      : null;
+
+  const change =
+    current.rate !== null &&
+    previous &&
+    previous.rate !== null
+      ? Math.round(
+          (
+            current.rate -
+            previous.rate
+          ) *
+          10
+        ) / 10
+      : null;
+
+  return {
+    current,
+    previous,
+    change,
+    currentMonth,
+    previousMonth
+  };
+}
+
+function qualityGrowthValueHTML(
+  reading,
+  options = {}
+) {
+  const amountOnly =
+    options.amountOnly === true;
+
+  if (
+    !reading?.current ||
+    reading.current.rate === null
+  ) {
+    return `
+      <strong>—</strong>
+      <span>لا توجد بيانات كافية</span>
+    `;
+  }
+
+  if (amountOnly) {
+    return `
+      <strong>
+        ${reading.current.count}
+        <small>
+          (${reading.current.rate}%)
+        </small>
+      </strong>
+      <span>
+        ${esc(
+          monthLabel(
+            reading.currentMonth
+          )
+        )}
+      </span>
+    `;
+  }
+
+  const changeText =
+    reading.change === null
+      ? "لا توجد مقارنة بشهر سابق"
+      : (
+          reading.change > 0
+            ? `ارتفاع ${reading.change} نقطة مئوية`
+            : (
+                reading.change < 0
+                  ? `انخفاض ${Math.abs(reading.change)} نقطة مئوية`
+                  : "استقرار دون تغير"
+              )
+        );
+
+  return `
+    <strong>
+      ${reading.current.rate}%
+    </strong>
+    <span>
+      ${esc(changeText)}
+    </span>
+  `;
+}
+
+function qualityFindCriterion(
+  keywordGroups
+) {
+  return criteria.find(
+    criterion => {
+      const text =
+        qualityNormalizeText(
+          criterion.criterion_text
+        );
+
+      return keywordGroups.every(
+        group =>
+          group.some(
+            keyword =>
+              text.includes(
+                qualityNormalizeText(
+                  keyword
+                )
+              )
+          )
+      );
+    }
+  ) || null;
+}
+
+function qualityCriterionReading(
+  rows,
+  keywordGroups
+) {
+  const criterion =
+    qualityFindCriterion(
+      keywordGroups
+    );
+
+  if (!criterion) {
+    return {
+      criterion: null,
+      total: 0,
+      count: 0,
+      rate: null
+    };
+  }
+
+  const ids =
+    new Set(
+      rows.map(
+        visit =>
+          String(
+            visit.id
+          )
+      )
+    );
+
+  const related =
+    ratings.filter(
+      rating =>
+        ids.has(
+          String(
+            rating.visit_id
+          )
+        ) &&
+        num(
+          rating.criterion_no
+        ) ===
+        num(
+          criterion.id
+        ) &&
+        [1, 2, 3, 4].includes(
+          num(
+            rating.rating
+          )
+        )
+    );
+
+  const count =
+    related.filter(
+      rating =>
+        num(
+          rating.rating
+        ) >= 3
+    ).length;
+
+  return {
+    criterion,
+    total:
+      related.length,
+    count,
+    rate:
+      related.length
+        ? Math.round(
+            count /
+            related.length *
+            1000
+          ) / 10
+        : null
+  };
+}
+
+function qualityCriterionValueHTML(
+  reading
+) {
+  if (
+    !reading?.criterion ||
+    reading.rate === null
+  ) {
+    return `
+      <strong>—</strong>
+      <span>لا توجد بيانات كافية</span>
+    `;
+  }
+
+  return `
+    <strong>
+      ${reading.rate}%
+    </strong>
+    <span>
+      م${reading.criterion.id}
+      •
+      ${reading.count} من ${reading.total}
+    </span>
+  `;
+}
+
+function qualityImprovementByBasicSubject(
+  rows
+) {
+  const basicRows =
+    qualityRowsByBasicGroup(
+      rows,
+      true
+    );
+
+  const subjectMap =
+    new Map();
+
+  basicRows.forEach(
+    visit => {
+      const subjectName =
+        qualitySubjectName(
+          visit
+        ) ||
+        "مادة غير محددة";
+
+      if (
+        !subjectMap.has(
+          subjectName
+        )
+      ) {
+        subjectMap.set(
+          subjectName,
+          []
+        );
+      }
+
+      subjectMap
+        .get(
+          subjectName
+        )
+        .push(
+          visit
+        );
+    }
+  );
+
+  return [
+    ...subjectMap.entries()
+  ]
+    .map(
+      (
+        [
+          subjectName,
+          subjectRows
+        ]
+      ) => {
+        const teacherIds = [
+          ...new Set(
+            subjectRows
+              .map(
+                visit =>
+                  String(
+                    visit.teacher_id
+                  )
+              )
+              .filter(Boolean)
+          )
+        ];
+
+        let improved = 0;
+        let comparable = 0;
+
+        teacherIds.forEach(
+          teacherId => {
+            const teacherRows =
+              subjectRows
+                .filter(
+                  visit =>
+                    String(
+                      visit.teacher_id
+                    ) ===
+                    teacherId &&
+                    [1, 2, 3, 4].includes(
+                      num(
+                        visit.overall_rating
+                      )
+                    )
+                )
+                .slice()
+                .sort(
+                  (
+                    a,
+                    b
+                  ) =>
+                    String(
+                      a.visit_date
+                    ).localeCompare(
+                      String(
+                        b.visit_date
+                      )
+                    )
+                );
+
+            if (
+              teacherRows.length < 2
+            ) {
+              return;
+            }
+
+            comparable++;
+
+            const first =
+              num(
+                teacherRows[0]
+                  .overall_rating
+              );
+
+            const last =
+              num(
+                teacherRows[
+                  teacherRows.length - 1
+                ].overall_rating
+              );
+
+            if (
+              last > first
+            ) {
+              improved++;
+            }
+          }
+        );
+
+        return {
+          subjectName,
+          improved,
+          comparable
+        };
+      }
+    )
+    .sort(
+      (
+        a,
+        b
+      ) =>
+        a.subjectName.localeCompare(
+          b.subjectName,
+          "ar"
+        )
+    );
+}
+
+function qualitySupportBasicReading() {
+  const basicSupport =
+    supports
+      .map(
+        support => {
+          const sourceVisit =
+            visits.find(
+              visit =>
+                String(
+                  visit.id
+                ) ===
+                String(
+                  support.source_visit_id
+                )
+            );
+
+          if (
+            !sourceVisit ||
+            !qualityIsBasicSubjectName(
+              qualitySubjectName(
+                sourceVisit
+              )
+            )
+          ) {
+            return null;
+          }
+
+          return {
+            support,
+            sourceVisit,
+            observed:
+              supportObservedRow(
+                support
+              )
+          };
+        }
+      )
+      .filter(Boolean);
+
+  const supportedTeachers =
+    new Set(
+      basicSupport.map(
+        item =>
+          String(
+            item.support.teacher_id
+          )
+      )
+    );
+
+  const improvedTeachers =
+    new Set(
+      basicSupport
+        .filter(
+          item =>
+            item.observed?.change
+              ?.label ===
+            "تحسن"
+        )
+        .map(
+          item =>
+            String(
+              item.support.teacher_id
+            )
+        )
+    );
+
+  return {
+    supported:
+      supportedTeachers.size,
+    improved:
+      improvedTeachers.size
+  };
+}
+
+function qualityCardReadingsHTML(
+  rows
+) {
+  const highBasic =
+    qualityGrowthReading(
+      rows,
+      true,
+      [3, 4]
+    );
+
+  const highNonBasic =
+    qualityGrowthReading(
+      rows,
+      false,
+      [3, 4]
+    );
+
+  const meetsBasic =
+    qualityGrowthReading(
+      rows,
+      true,
+      [2]
+    );
+
+  const meetsNonBasic =
+    qualityGrowthReading(
+      rows,
+      false,
+      [2]
+    );
+
+  const partialBasic =
+    qualityGrowthReading(
+      rows,
+      true,
+      [1]
+    );
+
+  const partialNonBasic =
+    qualityGrowthReading(
+      rows,
+      false,
+      [1]
+    );
+
+  const planning =
+    qualityCriterionReading(
+      rows,
+      [
+        ["تخطيط", "التخطيط"],
+        ["موقف", "الموقف", "المواقف"]
+      ]
+    );
+
+  const knowledgeSkills =
+    qualityCriterionReading(
+      rows,
+      [
+        ["معارف", "المعارف"],
+        ["مهارات", "المهارات"]
+      ]
+    );
+
+  const motivation =
+    qualityCriterionReading(
+      rows,
+      [
+        ["دافعيه", "الدافعيه", "دافعية"],
+        ["مشاركه", "المشاركه", "مشاركة"]
+      ]
+    );
+
+  const improvement =
+    qualityImprovementByBasicSubject(
+      rows
+    );
+
+  const support =
+    qualitySupportBasicReading();
+
+  const growthCell =
+    reading => {
+      if (
+        !reading?.current ||
+        reading.current.rate === null
+      ) {
+        return `
+          <span style="color:#7a8b96;">
+            —
+          </span>
+        `;
+      }
+
+      const change =
+        reading.change === null
+          ? "لا توجد مقارنة سابقة"
+          : (
+              reading.change > 0
+                ? `↑ ${reading.change} نقطة`
+                : (
+                    reading.change < 0
+                      ? `↓ ${Math.abs(reading.change)} نقطة`
+                      : "ثبات"
+                  )
+            );
+
+      return `
+        <strong style="display:block;font-size:18px;color:#123f55;">
+          ${reading.current.rate}%
+        </strong>
+        <small style="color:#6f7f89;">
+          ${esc(change)}
+        </small>
+      `;
+    };
+
+  const amountCell =
+    reading => {
+      if (
+        !reading?.current ||
+        reading.current.rate === null
+      ) {
+        return "—";
+      }
+
+      return `
+        <strong style="font-size:18px;color:#123f55;">
+          ${reading.current.count}
+        </strong>
+        <span style="color:#6f7f89;">
+          (${reading.current.rate}%)
+        </span>
+      `;
+    };
+
+  const criterionCell =
+    reading => {
+      if (
+        !reading?.criterion ||
+        reading.rate === null
+      ) {
+        return `
+          <span style="color:#7a8b96;">
+            لا توجد بيانات كافية
+          </span>
+        `;
+      }
+
+      return `
+        <strong style="font-size:18px;color:#123f55;">
+          ${reading.rate}%
+        </strong>
+        <small style="display:block;color:#6f7f89;">
+          ${reading.count} من ${reading.total}
+          • م${reading.criterion.id}
+        </small>
+      `;
+    };
+
+  const improvementRows =
+    improvement.length
+      ? improvement
+          .map(
+            item => `
+              <tr>
+                <td>
+                  ${esc(item.subjectName)}
+                </td>
+                <td style="text-align:center;">
+                  ${item.improved}
+                </td>
+                <td style="text-align:center;">
+                  ${item.comparable}
+                </td>
+                <td style="text-align:center;">
+                  ${
+                    item.comparable
+                      ? Math.round(
+                          item.improved /
+                          item.comparable *
+                          1000
+                        ) / 10
+                      : 0
+                  }%
+                </td>
+              </tr>
+            `
+          )
+          .join("")
+      : `
+          <tr>
+            <td
+              colspan="4"
+              style="text-align:center;color:#7a8b96;padding:18px;"
+            >
+              تحتاج القراءة إلى زيارتين على الأقل للمعلمة في المادة نفسها.
+            </td>
+          </tr>
+        `;
+
+  const tableStyle = `
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0;
+    overflow:hidden;
+    border:1px solid #d9e4e8;
+    border-radius:14px;
+    background:#fff;
+  `;
+
+  const thStyle = `
+    background:#eef4f6;
+    color:#173f53;
+    font-weight:800;
+    padding:13px 12px;
+    border-bottom:1px solid #d9e4e8;
+    text-align:center;
+  `;
+
+  const tdStyle = `
+    padding:13px 12px;
+    border-bottom:1px solid #edf2f4;
+    vertical-align:middle;
+  `;
+
+  return `
+    <div style="margin-top:16px;">
+      <div style="margin-bottom:18px;">
+        <h4 style="margin:0 0 10px;color:#143f54;">
+          أولًا: مستويات الأداء في المواد الأساسية وغير الأساسية
+        </h4>
+
+        <div style="overflow-x:auto;">
+          <table style="${tableStyle}">
+            <thead>
+              <tr>
+                <th style="${thStyle};text-align:right;">
+                  المؤشر
+                </th>
+                <th style="${thStyle}">
+                  المواد الأساسية
+                </th>
+                <th style="${thStyle}">
+                  المواد غير الأساسية
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              <tr>
+                <td style="${tdStyle};font-weight:700;">
+                  نمو مستوى «يتجاوز التوقعات» فأعلى
+                </td>
+                <td style="${tdStyle};text-align:center;">
+                  ${growthCell(highBasic)}
+                </td>
+                <td style="${tdStyle};text-align:center;">
+                  ${growthCell(highNonBasic)}
+                </td>
+              </tr>
+
+              <tr>
+                <td style="${tdStyle};font-weight:700;">
+                  نمو مستوى «يفي بالتوقعات تمامًا»
+                </td>
+                <td style="${tdStyle};text-align:center;">
+                  ${growthCell(meetsBasic)}
+                </td>
+                <td style="${tdStyle};text-align:center;">
+                  ${growthCell(meetsNonBasic)}
+                </td>
+              </tr>
+
+              <tr>
+                <td style="${tdStyle};font-weight:700;">
+                  مقدار مستوى «يفي بالتوقعات جزئيًا»
+                </td>
+                <td style="${tdStyle};text-align:center;">
+                  ${amountCell(partialBasic)}
+                </td>
+                <td style="${tdStyle};text-align:center;">
+                  ${amountCell(partialNonBasic)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <h4 style="margin:0 0 10px;color:#143f54;">
+          ثانيًا: مؤشرات الممارسة الصفية
+        </h4>
+
+        <div style="overflow-x:auto;">
+          <table style="${tableStyle}">
+            <thead>
+              <tr>
+                <th style="${thStyle};text-align:right;">
+                  المؤشر
+                </th>
+                <th style="${thStyle}">
+                  القراءة
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              <tr>
+                <td style="${tdStyle};font-weight:700;">
+                  تخطيط الدروس وإدارة المواقف التعليمية بصورة منظمة
+                </td>
+                <td style="${tdStyle};text-align:center;">
+                  ${criterionCell(planning)}
+                </td>
+              </tr>
+
+              <tr>
+                <td style="${tdStyle};font-weight:700;">
+                  إظهار المتعلمين للمعارف والمهارات الأساسية المكتسبة
+                </td>
+                <td style="${tdStyle};text-align:center;">
+                  ${criterionCell(knowledgeSkills)}
+                </td>
+              </tr>
+
+              <tr>
+                <td style="${tdStyle};font-weight:700;">
+                  إثارة دافعية المتعلمين بما يحفز المشاركة في التعلم
+                </td>
+                <td style="${tdStyle};text-align:center;">
+                  ${criterionCell(motivation)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="margin-bottom:18px;">
+        <h4 style="margin:0 0 10px;color:#143f54;">
+          ثالثًا: تطور أداء المعلمات في المواد الأساسية
+        </h4>
+
+        <p style="margin:0 0 10px;color:#6f7f89;font-size:13px;">
+          يعتمد المؤشر على مقارنة أول وآخر زيارة متاحة للمعلمة في المادة نفسها، ولا تُحتسب المعلمة التي لا تتوافر لها زيارتان قابلتان للمقارنة.
+        </p>
+
+        <div style="overflow-x:auto;">
+          <table style="${tableStyle}">
+            <thead>
+              <tr>
+                <th style="${thStyle};text-align:right;">
+                  المادة
+                </th>
+                <th style="${thStyle}">
+                  تحسن إلى مستوى أعلى
+                </th>
+                <th style="${thStyle}">
+                  قابل للمقارنة
+                </th>
+                <th style="${thStyle}">
+                  نسبة التحسن
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${improvementRows}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <h4 style="margin:0 0 10px;color:#143f54;">
+          رابعًا: الدعم والمساندة في المواد الأساسية
+        </h4>
+
+        <div style="overflow-x:auto;">
+          <table style="${tableStyle}">
+            <thead>
+              <tr>
+                <th style="${thStyle};text-align:right;">
+                  المؤشر
+                </th>
+                <th style="${thStyle}">
+                  العدد
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              <tr>
+                <td style="${tdStyle};font-weight:700;">
+                  المعلمات اللاتي تلقين دعمًا أو مساندة
+                </td>
+                <td style="${tdStyle};text-align:center;font-size:18px;font-weight:800;">
+                  ${support.supported}
+                </td>
+              </tr>
+
+              <tr>
+                <td style="${tdStyle};font-weight:700;">
+                  المعلمات اللاتي حققن تحسنًا في متابعة لاحقة
+                </td>
+                <td style="${tdStyle};text-align:center;font-size:18px;font-weight:800;">
+                  ${support.improved}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p style="margin:10px 2px 0;color:#7a8b96;font-size:12px;">
+          مؤشرات «المعلمات المستجدات» و«الأولى بالرعاية» لن تُعرض بأرقام حتى نضيف هذا التصنيف رسميًا إلى بيانات المعلمات.
+        </p>
+      </div>
+    </div>
+  `;
+}
+
+
+function renderDashboardQualityCard(
+  rows
+) {
+  const anchor =
+    $("dashboardDepartmentPerformance");
+
+  if (!anchor) {
+    return;
+  }
+
+  let panel =
+    $("dashboardQualityCardReadings");
+
+  if (!panel) {
+    panel =
+      document.createElement(
+        "article"
+      );
+
+    panel.id =
+      "dashboardQualityCardReadings";
+
+    panel.className =
+      "panel strategic-panel";
+
+    anchor.insertAdjacentElement(
+      "afterend",
+      panel
+    );
+  }
+
+  panel.innerHTML = `
+    <div class="panel-head">
+      <div>
+        <span class="panel-kicker">
+          QUALITY CARD READINGS
+        </span>
+        <h3>
+          قراءات بطاقة الجودة
+        </h3>
+        <p>
+          مؤشرات آلية مستخلصة من الزيارات الصفية المسجلة لدعم المتابعة واتخاذ القرار.
+        </p>
+      </div>
+    </div>
+
+    ${qualityCardReadingsHTML(
+      rows
+    )}
+  `;
+}
+
+
+function renderDashboardDepartmentPerformance(rows) {
+  const anchor = $("dashboardCriteriaAnalytics")?.closest("article");
+  if (!anchor) return;
+
+  let panel = $("dashboardDepartmentPerformance");
+  if (!panel) {
+    panel = document.createElement("article");
+    panel.id = "dashboardDepartmentPerformance";
+    panel.className = "panel strategic-panel";
+    anchor.insertAdjacentElement("afterend", panel);
+  }
+
+  panel.innerHTML = `
+    <div class="panel-head">
+      <div>
+        <span class="panel-kicker">DEPARTMENT PERFORMANCE READINGS</span>
+        <h3>قراءة مستويات الأداء حسب الأقسام</h3>
+        <p>توزيع المعلمات المرصودات وفق مسار الأداء المستخلص من الزيارات المسجلة.</p>
+      </div>
+    </div>
+    ${departmentPerformanceReadingsHTML(rows)}
+  `;
+}
+
 function renderDashboard() {
   const rows =
     dashboardFilteredRows();
@@ -3878,6 +5174,14 @@ function renderDashboard() {
     supportSummary();
 
   renderDashboardCriteriaAnalytics(
+    rows
+  );
+
+  renderDashboardDepartmentPerformance(
+    rows
+  );
+
+  renderDashboardQualityCard(
     rows
   );
 
@@ -5062,7 +6366,18 @@ function renderOverall() {
               ?.value ||
             ""
         }
-      );
+      ) + `
+        <article class="panel strategic-panel" style="margin-top:20px;">
+          <div class="panel-head">
+            <div>
+              <span class="panel-kicker">DEPARTMENT PERFORMANCE READINGS</span>
+              <h3>قراءة مستويات الأداء حسب الأقسام</h3>
+              <p>قراءة تجميعية للمعلمات المرصودات وفق مسار الأداء في الزيارات المسجلة.</p>
+            </div>
+          </div>
+          ${departmentPerformanceReadingsHTML(rows)}
+        </article>
+      `;
   }
 }
 
@@ -5622,6 +6937,12 @@ function generateReport() {
                 </p>
               `
         }
+
+        <h3>
+          قراءة مستويات الأداء حسب الأقسام
+        </h3>
+
+        ${departmentPerformanceReadingsHTML(rows, { compact: true })}
 
         <h3>
           تحليل المعايير والنمو
