@@ -1,0 +1,4223 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+
+  <title>إعداد أسئلة التقييم</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+
+  <style>
+    *{
+      box-sizing:border-box;
+    }
+
+    :root{
+      --primary:#124f52;
+      --primary-dark:#0b3d40;
+      --primary-soft:#e9f3f1;
+
+      --gold:#c9a55c;
+      --gold-soft:#f7f0df;
+
+      --bg:#f5f7f6;
+      --white:#ffffff;
+
+      --text:#173e42;
+      --muted:#6d7c7d;
+
+      --border:#dde7e5;
+
+      --danger:#a94442;
+      --danger-soft:#f8e8e7;
+
+      --success:#287348;
+      --success-soft:#e5f3e9;
+
+      --shadow:0 12px 35px rgba(20,54,70,.08);
+    }
+
+    body{
+      margin:0;
+      font-family:Tahoma,Arial,sans-serif;
+      background:var(--bg);
+      color:var(--text);
+    }
+
+    button,
+    input,
+    select,
+    textarea{
+      font:inherit;
+    }
+
+    button{
+      cursor:pointer;
+    }
+
+    button:disabled{
+      cursor:not-allowed;
+      opacity:.55;
+    }
+
+    .hidden{
+      display:none !important;
+    }
+
+    .top-header{
+      background:
+        linear-gradient(
+          135deg,
+          var(--primary-dark),
+          var(--primary)
+        );
+
+      color:#fff;
+
+      padding:26px 32px;
+
+      box-shadow:
+        0 8px 30px
+        rgba(9,48,50,.18);
+    }
+
+    .header-inner{
+      max-width:1350px;
+      margin:auto;
+
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+
+      gap:18px;
+    }
+
+    .header-title small{
+      display:block;
+
+      color:#d7e7e5;
+
+      letter-spacing:1.3px;
+
+      font-size:.74rem;
+
+      margin-bottom:7px;
+    }
+
+    .header-title h1{
+      margin:0;
+      font-size:1.65rem;
+    }
+
+    .header-title p{
+      margin:7px 0 0;
+
+      color:#d7e6e4;
+
+      line-height:1.8;
+
+      font-size:.87rem;
+    }
+
+    .header-actions{
+      display:flex;
+      flex-wrap:wrap;
+      gap:9px;
+    }
+
+    .header-btn{
+      border:
+        1px solid
+        rgba(255,255,255,.25);
+
+      background:
+        rgba(255,255,255,.1);
+
+      color:#fff;
+
+      padding:10px 15px;
+
+      border-radius:11px;
+    }
+
+    .header-btn:hover{
+      background:
+        rgba(255,255,255,.17);
+    }
+
+    .container{
+      max-width:1350px;
+
+      margin:0 auto;
+
+      padding:
+        28px
+        22px
+        60px;
+    }
+
+    .event-hero{
+      background:#fff;
+
+      border:
+        1px solid
+        var(--border);
+
+      border-radius:22px;
+
+      padding:24px;
+
+      box-shadow:
+        var(--shadow);
+
+      margin-bottom:20px;
+    }
+
+    .event-hero-top{
+      display:flex;
+
+      align-items:flex-start;
+
+      justify-content:
+        space-between;
+
+      gap:20px;
+    }
+
+    .event-hero h2{
+      margin:
+        8px
+        0
+        8px;
+
+      font-size:1.45rem;
+
+      line-height:1.7;
+    }
+
+    .event-hero p{
+      margin:0;
+
+      color:
+        var(--muted);
+
+      line-height:1.8;
+    }
+
+    .event-meta{
+      display:flex;
+
+      flex-wrap:wrap;
+
+      gap:8px;
+
+      margin-top:15px;
+    }
+
+    .tag{
+      display:inline-flex;
+
+      align-items:center;
+
+      gap:5px;
+
+      padding:
+        6px
+        10px;
+
+      border-radius:999px;
+
+      background:
+        var(--primary-soft);
+
+      color:
+        var(--primary);
+
+      font-size:.76rem;
+
+      font-weight:700;
+    }
+
+    .tag.gold{
+      background:
+        var(--gold-soft);
+
+      color:#755d2b;
+    }
+
+    .tag.draft{
+      background:#f3f0e7;
+      color:#806b38;
+    }
+
+    .tag.published{
+      background:
+        var(--success-soft);
+
+      color:
+        var(--success);
+    }
+
+    .tag.closed{
+      background:#eceeee;
+      color:#666;
+    }
+
+    .builder-toolbar{
+      background:#fff;
+
+      border:
+        1px solid
+        var(--border);
+
+      border-radius:20px;
+
+      padding:18px;
+
+      box-shadow:
+        0 8px 26px
+        rgba(20,54,70,.05);
+
+      margin-bottom:20px;
+
+      display:flex;
+
+      align-items:center;
+
+      justify-content:
+        space-between;
+
+      gap:15px;
+
+      flex-wrap:wrap;
+    }
+
+    .builder-toolbar-info h3{
+      margin:0;
+
+      font-size:1.05rem;
+    }
+
+    .builder-toolbar-info p{
+      margin:
+        5px
+        0
+        0;
+
+      color:
+        var(--muted);
+
+      font-size:.83rem;
+    }
+
+    .toolbar-actions{
+      display:flex;
+      flex-wrap:wrap;
+      gap:9px;
+    }
+
+    .btn{
+      border:none;
+
+      border-radius:11px;
+
+      padding:
+        11px
+        16px;
+
+      font-weight:700;
+
+      transition:.18s ease;
+    }
+
+    .btn:not(:disabled):hover{
+      transform:
+        translateY(-1px);
+    }
+
+    .btn-primary{
+      background:
+        var(--primary);
+
+      color:#fff;
+    }
+
+    .btn-primary:hover{
+      background:
+        var(--primary-dark);
+    }
+
+    .btn-soft{
+      background:
+        var(--primary-soft);
+
+      color:
+        var(--primary);
+    }
+
+    .btn-gold{
+      background:
+        var(--gold);
+
+      color:#fff;
+    }
+
+    .btn-danger{
+      background:
+        var(--danger-soft);
+
+      color:
+        var(--danger);
+    }
+
+    .ai-panel{
+      border:
+        1px solid
+        rgba(201,165,92,.35);
+
+      background:
+        linear-gradient(
+          135deg,
+          #fff,
+          #fbf8ef
+        );
+
+      border-radius:20px;
+
+      padding:20px;
+
+      margin-bottom:20px;
+    }
+
+    .ai-panel-inner{
+      display:flex;
+
+      align-items:center;
+
+      justify-content:
+        space-between;
+
+      gap:20px;
+    }
+
+    .ai-icon{
+      width:46px;
+      height:46px;
+
+      border-radius:14px;
+
+      display:flex;
+
+      align-items:center;
+
+      justify-content:center;
+
+      background:
+        var(--gold-soft);
+
+      color:#765c27;
+
+      font-size:1.35rem;
+
+      flex:0 0 auto;
+    }
+
+    .ai-copy{
+      flex:1;
+    }
+
+    .ai-copy strong{
+      display:block;
+      margin-bottom:5px;
+    }
+
+    .ai-copy p{
+      margin:0;
+
+      color:
+        var(--muted);
+
+      line-height:1.7;
+
+      font-size:.84rem;
+    }
+
+    .questions-panel{
+      background:#fff;
+
+      border:
+        1px solid
+        var(--border);
+
+      border-radius:22px;
+
+      padding:22px;
+
+      box-shadow:
+        var(--shadow);
+    }
+
+    .questions-head{
+      display:flex;
+
+      justify-content:
+        space-between;
+
+      align-items:center;
+
+      gap:15px;
+
+      margin-bottom:18px;
+    }
+
+    .questions-head h3{
+      margin:0;
+    }
+
+    .questions-count{
+      padding:
+        6px
+        10px;
+
+      border-radius:999px;
+
+      background:
+        var(--primary-soft);
+
+      color:
+        var(--primary);
+
+      font-size:.77rem;
+
+      font-weight:700;
+    }
+
+    .question-card{
+      border:
+        1px solid
+        var(--border);
+
+      border-radius:17px;
+
+      padding:18px;
+
+      background:
+        linear-gradient(
+          180deg,
+          #fff,
+          #fbfdfc
+        );
+
+      margin-bottom:14px;
+    }
+
+    .question-top{
+      display:flex;
+
+      align-items:center;
+
+      justify-content:
+        space-between;
+
+      gap:12px;
+
+      margin-bottom:14px;
+    }
+
+    .question-number{
+      width:34px;
+      height:34px;
+
+      border-radius:10px;
+
+      display:flex;
+
+      align-items:center;
+
+      justify-content:center;
+
+      background:
+        var(--primary);
+
+      color:#fff;
+
+      font-weight:700;
+    }
+
+    .question-actions{
+      display:flex;
+      gap:7px;
+    }
+
+    .small-btn{
+      border:none;
+
+      border-radius:9px;
+
+      padding:
+        7px
+        10px;
+
+      font-size:.76rem;
+
+      font-weight:700;
+    }
+
+    .small-btn.move{
+      background:#eef4f3;
+
+      color:
+        var(--primary);
+    }
+
+    .small-btn.delete{
+      background:
+        var(--danger-soft);
+
+      color:
+        var(--danger);
+    }
+
+    .question-grid{
+      display:grid;
+
+      grid-template-columns:
+        2fr 1fr;
+
+      gap:13px;
+    }
+
+    label{
+      display:flex;
+
+      flex-direction:column;
+
+      gap:7px;
+
+      font-size:.84rem;
+
+      font-weight:700;
+    }
+
+    label.full{
+      grid-column:1/-1;
+    }
+
+    input,
+    select,
+    textarea{
+      width:100%;
+
+      border:
+        1px solid
+        #cfdddb;
+
+      border-radius:10px;
+
+      padding:
+        11px
+        12px;
+
+      outline:none;
+
+      background:#fff;
+
+      color:
+        var(--text);
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus{
+      border-color:
+        var(--primary);
+
+      box-shadow:
+        0 0 0 3px
+        rgba(18,79,82,.08);
+    }
+
+    textarea{
+      resize:vertical;
+      line-height:1.7;
+    }
+
+    .question-text{
+      min-height:76px;
+    }
+
+    .options-text{
+      min-height:110px;
+    }
+
+    .help-text{
+      color:
+        var(--muted);
+
+      font-weight:400;
+
+      font-size:.74rem;
+
+      line-height:1.6;
+    }
+
+    .required-line{
+      display:flex;
+
+      align-items:center;
+
+      flex-direction:row;
+
+      gap:7px;
+
+      margin-top:13px;
+
+      font-size:.8rem;
+
+      font-weight:700;
+    }
+
+    .required-line input{
+      width:auto;
+    }
+
+    .empty-state{
+      padding:
+        42px
+        18px;
+
+      text-align:center;
+
+      border:
+        1px dashed
+        #c7d7d5;
+
+      border-radius:16px;
+
+      color:
+        var(--muted);
+
+      background:#fafcfc;
+    }
+
+    .empty-state strong{
+      display:block;
+
+      color:
+        var(--text);
+
+      margin-bottom:7px;
+    }
+
+    .save-bar{
+      margin-top:18px;
+
+      background:#fff;
+
+      border:
+        1px solid
+        var(--border);
+
+      border-radius:18px;
+
+      padding:16px;
+
+      display:flex;
+
+      align-items:center;
+
+      justify-content:
+        space-between;
+
+      gap:15px;
+
+      flex-wrap:wrap;
+
+      box-shadow:
+        0 8px 24px
+        rgba(20,54,70,.05);
+    }
+
+    .save-status{
+      color:
+        var(--muted);
+
+      font-size:.84rem;
+    }
+
+    .save-status.success{
+      color:
+        var(--success);
+
+      font-weight:700;
+    }
+
+    .save-status.error{
+      color:
+        var(--danger);
+
+      font-weight:700;
+    }
+
+
+    /* =====================================================
+       PUBLISH
+    ===================================================== */
+
+    .publish-box{
+      margin-top:18px;
+
+      background:
+        linear-gradient(
+          135deg,
+          #fff,
+          #fbf8ef
+        );
+
+      border:
+        1px solid
+        rgba(201,165,92,.35);
+
+      border-radius:20px;
+
+      padding:20px;
+
+      display:flex;
+
+      align-items:center;
+
+      justify-content:
+        space-between;
+
+      gap:18px;
+
+      flex-wrap:wrap;
+
+      box-shadow:
+        0 8px 25px
+        rgba(20,54,70,.05);
+    }
+
+    .publish-copy{
+      flex:1;
+    }
+
+    .publish-copy strong{
+      display:block;
+
+      margin-bottom:6px;
+
+      font-size:1rem;
+    }
+
+    .publish-copy p{
+      margin:0;
+
+      color:
+        var(--muted);
+
+      line-height:1.7;
+
+      font-size:.82rem;
+    }
+
+
+    /* =====================================================
+       PUBLIC LINK
+    ===================================================== */
+
+    .public-link-box{
+      margin-top:18px;
+
+      background:#fff;
+
+      border:
+        1px solid
+        #cfe3de;
+
+      border-radius:20px;
+
+      padding:20px;
+
+      box-shadow:
+        0 8px 25px
+        rgba(20,54,70,.05);
+    }
+
+    .public-link-title{
+      display:flex;
+
+      align-items:center;
+
+      gap:8px;
+
+      margin-bottom:13px;
+
+      color:
+        var(--success);
+
+      font-weight:700;
+    }
+
+    .public-link-box input{
+      direction:ltr;
+
+      text-align:left;
+
+      font-family:
+        Arial,
+        sans-serif;
+    }
+
+    .link-actions{
+      margin-top:12px;
+
+      display:flex;
+
+      flex-wrap:wrap;
+
+      gap:9px;
+    }
+
+    .published-note{
+      margin-top:15px;
+
+      background:
+        var(--success-soft);
+
+      border:
+        1px solid
+        #cae5d4;
+
+      color:
+        var(--success);
+
+      border-radius:13px;
+
+      padding:
+        12px
+        14px;
+
+      line-height:1.7;
+
+      font-size:.82rem;
+
+      font-weight:700;
+    }
+
+
+
+    /* =====================================================
+       QUESTION BANK
+    ===================================================== */
+
+    .bank-panel{
+      margin-bottom:20px;
+      background:linear-gradient(135deg,#f4faf8,#fff);
+      border:1px solid #cfe3de;
+      border-radius:20px;
+      padding:20px;
+      box-shadow:0 8px 25px rgba(20,54,70,.05);
+    }
+
+    .bank-panel-inner{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:18px;
+      flex-wrap:wrap;
+    }
+
+    .bank-icon{
+      width:48px;
+      height:48px;
+      border-radius:14px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:var(--primary-soft);
+      color:var(--primary);
+      font-size:1.35rem;
+      flex:0 0 auto;
+    }
+
+    .bank-copy{flex:1;min-width:240px;}
+    .bank-copy strong{display:block;margin-bottom:5px;}
+    .bank-copy p{margin:0;color:var(--muted);line-height:1.7;font-size:.84rem;}
+
+    .modal-backdrop{
+      position:fixed;
+      inset:0;
+      background:rgba(8,37,40,.58);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+      z-index:9999;
+    }
+
+    .bank-modal{
+      width:min(1050px,100%);
+      max-height:92vh;
+      overflow:hidden;
+      background:#fff;
+      border-radius:22px;
+      box-shadow:0 25px 70px rgba(0,0,0,.25);
+      display:flex;
+      flex-direction:column;
+    }
+
+    .bank-modal-head{
+      padding:19px 22px;
+      border-bottom:1px solid var(--border);
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:15px;
+    }
+
+    .bank-modal-head h3{margin:0 0 5px;font-size:1.15rem;}
+    .bank-modal-head p{margin:0;color:var(--muted);font-size:.8rem;line-height:1.6;}
+    .modal-close{border:none;background:#eef4f3;color:var(--primary);width:36px;height:36px;border-radius:10px;font-size:1.1rem;}
+
+    .bank-controls{
+      padding:15px 22px;
+      border-bottom:1px solid var(--border);
+      display:grid;
+      grid-template-columns:1.1fr 1fr 1.4fr;
+      gap:12px;
+      background:#fbfcfc;
+    }
+
+    .bank-mode-row{
+      padding:12px 22px 0;
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+
+    .filter-chip{
+      border:1px solid #d6e3e1;
+      background:#fff;
+      color:var(--text);
+      border-radius:999px;
+      padding:7px 11px;
+      font-size:.76rem;
+      font-weight:700;
+    }
+    .filter-chip.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+
+    .bank-summary{padding:11px 22px;color:var(--muted);font-size:.8rem;}
+
+    .bank-list{
+      padding:0 22px 20px;
+      overflow:auto;
+      display:grid;
+      gap:10px;
+    }
+
+    .bank-item{
+      border:1px solid var(--border);
+      border-radius:14px;
+      padding:13px 14px;
+      display:grid;
+      grid-template-columns:auto 1fr auto;
+      gap:12px;
+      align-items:start;
+      cursor:pointer;
+      background:#fff;
+      transition:.15s ease;
+    }
+    .bank-item:hover{border-color:#a8c7c1;background:#fbfefd;}
+    .bank-item.selected{border-color:var(--primary);background:var(--primary-soft);}
+    .bank-item input{width:18px;height:18px;margin-top:3px;}
+    .bank-question-text{font-weight:700;line-height:1.75;font-size:.87rem;}
+    .bank-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;}
+    .bank-badge{background:#f0f4f3;border-radius:999px;padding:4px 8px;font-size:.68rem;color:#536c6a;}
+    .bank-badge.match{background:var(--gold-soft);color:#765d2b;}
+    .bank-type{font-size:.72rem;color:var(--muted);white-space:nowrap;}
+
+    .bank-modal-foot{
+      border-top:1px solid var(--border);
+      padding:15px 22px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      background:#fff;
+    }
+    .selected-count{font-size:.82rem;color:var(--muted);font-weight:700;}
+
+    @media(max-width:760px){
+      .bank-controls{grid-template-columns:1fr;}
+      .bank-item{grid-template-columns:auto 1fr;}
+      .bank-type{grid-column:2;}
+      .bank-modal-foot{align-items:stretch;flex-direction:column;}
+      .bank-modal-foot .btn{width:100%;}
+    }
+
+    .loading-screen{
+      min-height:55vh;
+
+      display:flex;
+
+      align-items:center;
+
+      justify-content:center;
+
+      color:
+        var(--muted);
+    }
+
+    @media(max-width:760px){
+
+      .header-inner,
+      .event-hero-top,
+      .ai-panel-inner{
+        flex-direction:column;
+
+        align-items:flex-start;
+      }
+
+      .question-grid{
+        grid-template-columns:1fr;
+      }
+
+      label.full{
+        grid-column:auto;
+      }
+
+      .container{
+        padding:
+          20px
+          13px
+          45px;
+      }
+
+      .publish-box{
+        align-items:stretch;
+      }
+
+      .publish-box .btn{
+        width:100%;
+      }
+    }
+  </style>
+
+</head>
+
+<body>
+
+<header class="top-header">
+
+  <div class="header-inner">
+
+    <div class="header-title">
+
+      <small>
+        SMART EVENT EVALUATION
+      </small>
+
+      <h1>
+        إعداد أسئلة التقييم
+      </h1>
+
+      <p>
+        بناء ومراجعة أسئلة قياس أثر الفعالية
+        قبل نشرها للمستفيدين.
+      </p>
+
+    </div>
+
+    <div class="header-actions">
+
+      <button
+        class="header-btn"
+        onclick="
+          location.href='evaluations.html'
+        "
+      >
+        ← العودة للتقييمات
+      </button>
+
+    </div>
+
+  </div>
+
+</header>
+
+
+<main
+  id="mainContainer"
+  class="container"
+>
+
+  <div class="loading-screen">
+    جاري تحميل بيانات التقييم...
+  </div>
+
+</main>
+
+
+<script>
+
+  /* =========================================================
+     SUPABASE
+  ========================================================= */
+
+  const sb =
+    supabase.createClient(
+      APP_CONFIG.supabaseUrl,
+      APP_CONFIG.supabaseKey
+    );
+
+
+  let currentUser =
+    null;
+
+  let eventId =
+    null;
+
+  let eventData =
+    null;
+
+  let questions =
+    [];
+
+  let hasUnsavedChanges =
+    false;
+
+  let questionBank = [];
+  let bankSelectedIds = new Set();
+  let bankActiveCategory = "الكل";
+  let bankOnlySuggested = true;
+
+
+
+  /* =========================================================
+     START
+  ========================================================= */
+
+  document.addEventListener(
+    "DOMContentLoaded",
+    init
+  );
+
+
+  async function init(){
+
+    const params =
+      new URLSearchParams(
+        location.search
+      );
+
+
+    eventId =
+      params.get("id");
+
+
+    if(!eventId){
+
+      location.href =
+        "evaluations.html";
+
+      return;
+    }
+
+
+    const {
+      data:{
+        session
+      }
+    } =
+      await sb.auth.getSession();
+
+
+    if(!session){
+
+      location.href =
+        "index.html";
+
+      return;
+    }
+
+
+    currentUser =
+      session.user;
+
+
+    await loadEvent();
+  }
+
+
+
+  /* =========================================================
+     LOAD EVENT
+  ========================================================= */
+
+  async function loadEvent(){
+
+    const eventResult =
+      await sb
+        .from(
+          "evaluation_events"
+        )
+        .select("*")
+        .eq(
+          "id",
+          eventId
+        )
+        .single();
+
+
+    if(eventResult.error){
+
+      console.error(
+        eventResult.error
+      );
+
+      renderError(
+        "تعذر تحميل بيانات التقييم."
+      );
+
+      return;
+    }
+
+
+    eventData =
+      eventResult.data;
+
+
+    const questionsResult =
+      await sb
+        .from(
+          "evaluation_questions"
+        )
+        .select("*")
+        .eq(
+          "event_id",
+          eventId
+        )
+        .order(
+          "sort_order",
+          {
+            ascending:true
+          }
+        );
+
+
+    if(questionsResult.error){
+
+      console.error(
+        questionsResult.error
+      );
+
+      renderError(
+        "تم تحميل الفعالية، لكن تعذر تحميل الأسئلة."
+      );
+
+      return;
+    }
+
+
+    questions =
+      (
+        questionsResult.data ||
+        []
+      )
+      .map(
+        normalizeDbQuestion
+      );
+
+
+    renderBuilder();
+  }
+
+
+
+  /* =========================================================
+     NORMALIZE DB QUESTION
+  ========================================================= */
+
+  function normalizeDbQuestion(
+    q
+  ){
+
+    return {
+
+      id:
+        q.id,
+
+      question_text:
+        q.question_text || "",
+
+      question_type:
+        q.question_type ||
+        "single_choice",
+
+      options:
+        Array.isArray(
+          q.options
+        )
+          ? q.options
+          : [],
+
+      required:
+        q.required !== false,
+
+      sort_order:
+        Number(
+          q.sort_order || 0
+        ),
+
+      bank_question_id:
+        q.bank_question_id || null,
+
+      category:
+        q.category || null,
+
+      measurement_dimension:
+        q.measurement_dimension || q.category || null,
+
+      score_map:
+        q.score_map || null,
+
+      scoring_method:
+        q.scoring_method || "none",
+
+      recommended_weight:
+        Number(q.recommended_weight || 1)
+
+    };
+  }
+
+
+
+  /* =========================================================
+     RENDER PAGE
+  ========================================================= */
+
+  function renderBuilder(){
+
+    const main =
+      document.getElementById(
+        "mainContainer"
+      );
+
+
+    const statusText =
+      eventData.status ===
+      "published"
+
+        ? "منشور"
+
+        :
+        eventData.status ===
+        "closed"
+
+          ? "مغلق"
+
+          : "مسودة";
+
+
+    const isEditable =
+      eventData.status ===
+      "draft";
+
+
+    main.innerHTML =
+      `
+
+      <section class="event-hero">
+
+        <div class="event-hero-top">
+
+          <div>
+
+            <span class="tag gold">
+              إعداد نموذج التقييم
+            </span>
+
+            <h2>
+              ${
+                escapeHtml(
+                  eventData.title
+                )
+              }
+            </h2>
+
+            <p>
+
+              ${
+                eventData.description
+
+                  ?
+                  escapeHtml(
+                    eventData.description
+                  )
+
+                  :
+                  "لا يوجد وصف مضاف للفعالية."
+              }
+
+            </p>
+
+            <div class="event-meta">
+
+              <span class="tag">
+
+                الفئة:
+
+                ${
+                  escapeHtml(
+                    eventData.target_audience
+                  )
+                }
+
+              </span>
+
+              <span
+                class="
+                  tag
+                  ${
+                    eventData.status
+                  }
+                "
+              >
+
+                الحالة:
+                ${statusText}
+
+              </span>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </section>
+
+
+
+      <section class="builder-toolbar">
+
+        <div class="builder-toolbar-info">
+
+          <h3>
+            بناء أسئلة التقييم
+          </h3>
+
+          <p>
+
+            ${
+              isEditable
+
+                ?
+                "راجعي الأسئلة قبل حفظها. لا يتم نشر أي سؤال تلقائيًا."
+
+                :
+                "تم اعتماد هذا التقييم، لذلك تم إيقاف تعديل الأسئلة."
+            }
+
+          </p>
+
+        </div>
+
+
+        <div class="toolbar-actions">
+
+          <button
+            id="addQuestionBtn"
+            class="btn btn-soft"
+
+            ${
+              isEditable
+                ? ""
+                : "disabled"
+            }
+          >
+            ＋ إضافة سؤال
+          </button>
+
+        </div>
+
+      </section>
+
+
+
+      <section class="bank-panel">
+
+        <div class="bank-panel-inner">
+
+          <div class="bank-icon">▦</div>
+
+          <div class="bank-copy">
+            <strong>بنك أسئلة التقييم</strong>
+            <p>بنك V2 الاحترافي يقترح نموذجًا متوازنًا حسب نوع الفعالية والفئة المستهدفة، مع محاور قياس موحّدة ونتائج قابلة للتحليل.</p>
+          </div>
+
+          <button
+            id="openQuestionBankBtn"
+            class="btn btn-primary"
+            ${isEditable ? "" : "disabled"}
+          >
+            اختيار من بنك الأسئلة
+          </button>
+
+        </div>
+
+      </section>
+
+
+      <section class="ai-panel">
+
+        <div class="ai-panel-inner">
+
+          <div class="ai-icon">
+            ✦
+          </div>
+
+
+          <div class="ai-copy">
+
+            <strong>
+              توليد أسئلة التقييم بالذكاء الاصطناعي
+            </strong>
+
+            <p>
+
+              يستخدم اسم الفعالية
+              والفئة المستهدفة والوصف
+              لإعداد أسئلة مقترحة
+              قابلة للمراجعة قبل الاعتماد.
+
+            </p>
+
+          </div>
+
+
+          <button
+            id="aiGenerateBtn"
+            class="btn btn-gold"
+
+            ${
+              isEditable
+                ? ""
+                : "disabled"
+            }
+          >
+
+            ✦ توليد الأسئلة
+
+          </button>
+
+        </div>
+
+      </section>
+
+
+
+      <section class="questions-panel">
+
+        <div class="questions-head">
+
+          <h3>
+            الأسئلة
+          </h3>
+
+          <span
+            id="questionsCount"
+            class="questions-count"
+          >
+
+            ${questions.length}
+            سؤال
+
+          </span>
+
+        </div>
+
+
+        <div
+          id="questionsContainer"
+        ></div>
+
+      </section>
+
+
+
+      <section class="save-bar">
+
+        <div
+          id="saveStatus"
+          class="save-status"
+        >
+
+          ${
+            isEditable
+
+              ?
+              "لم يتم إجراء تغييرات."
+
+              :
+              "تم اعتماد التقييم ولا يمكن تعديل الأسئلة بعد النشر."
+          }
+
+        </div>
+
+
+        <button
+          id="saveQuestionsBtn"
+          class="btn btn-primary"
+
+          ${
+            isEditable
+              ? ""
+              : "disabled"
+          }
+        >
+
+          حفظ الأسئلة
+
+        </button>
+
+      </section>
+
+
+
+      <section class="publish-box">
+
+        <div class="publish-copy">
+
+          <strong>
+
+            ${
+              eventData.status ===
+              "published"
+
+                ?
+                "التقييم منشور"
+
+                :
+                "اعتماد ونشر التقييم"
+            }
+
+          </strong>
+
+
+          <p>
+
+            ${
+              eventData.status ===
+              "published"
+
+                ?
+                "أصبح رابط التقييم متاحًا للمستفيدين ويمكن مشاركته معهم."
+
+                :
+                "بعد اعتماد التقييم يصبح الرابط العام متاحًا للمستفيدين دون الحاجة إلى تسجيل الدخول."
+            }
+
+          </p>
+
+        </div>
+
+
+        <button
+          id="publishBtn"
+          class="btn btn-gold"
+
+          ${
+            eventData.status ===
+            "draft"
+
+              ? ""
+
+              : "disabled"
+          }
+        >
+
+          ${
+            eventData.status ===
+            "published"
+
+              ?
+              "تم النشر ✓"
+
+              :
+              "اعتماد ونشر التقييم"
+          }
+
+        </button>
+
+      </section>
+
+
+
+      <section
+        id="publicLinkContainer"
+        class="
+          public-link-box
+          hidden
+        "
+      >
+
+        <div class="public-link-title">
+
+          ✓ رابط التقييم العام جاهز
+
+        </div>
+
+
+        <label>
+
+          رابط التقييم
+
+          <input
+            id="publicEvaluationLink"
+            type="text"
+            readonly
+          >
+
+        </label>
+
+
+        <div class="link-actions">
+
+          <button
+            id="copyPublicLinkBtn"
+            class="btn btn-soft"
+          >
+
+            نسخ الرابط
+
+          </button>
+
+
+          <button
+            id="openPublicLinkBtn"
+            class="btn btn-primary"
+          >
+
+            فتح نموذج التقييم
+
+          </button>
+
+        </div>
+
+
+        <div class="published-note">
+
+          يمكن إرسال هذا الرابط
+          للمعلمات أو أولياء الأمور
+          أو الفئة المستهدفة بالتقييم.
+
+        </div>
+
+      </section>
+
+      `;
+
+
+    renderQuestions();
+
+
+    if(
+      isEditable
+    ){
+
+      bindBuilderEvents();
+
+    }
+
+
+    if(
+      eventData.status ===
+      "published"
+    ){
+
+      showPublicLink();
+
+    }
+
+  }
+
+
+
+  /* =========================================================
+     BIND MAIN BUTTONS
+  ========================================================= */
+
+  function bindBuilderEvents(){
+
+    const addBtn =
+      document.getElementById(
+        "addQuestionBtn"
+      );
+
+    const saveBtn =
+      document.getElementById(
+        "saveQuestionsBtn"
+      );
+
+    const aiBtn =
+      document.getElementById(
+        "aiGenerateBtn"
+      );
+
+    const publishBtn =
+      document.getElementById(
+        "publishBtn"
+      );
+
+    const bankBtn =
+      document.getElementById(
+        "openQuestionBankBtn"
+      );
+
+
+    if(bankBtn){
+
+      bankBtn.addEventListener(
+        "click",
+        openQuestionBank
+      );
+
+    }
+
+
+    if(addBtn){
+
+      addBtn.addEventListener(
+        "click",
+        addQuestion
+      );
+
+    }
+
+
+    if(saveBtn){
+
+      saveBtn.addEventListener(
+        "click",
+        saveQuestions
+      );
+
+    }
+
+
+    if(aiBtn){
+
+      aiBtn.addEventListener(
+        "click",
+        generateAIQuestions
+      );
+
+    }
+
+
+    if(publishBtn){
+
+      publishBtn.addEventListener(
+        "click",
+        publishEvaluation
+      );
+
+    }
+
+  }
+
+
+
+  /* =========================================================
+     QUESTION BANK
+  ========================================================= */
+
+  async function openQuestionBank(){
+
+    if(eventData.status !== "draft") return;
+
+    if(!questionBank.length){
+      const { data, error } = await sb
+        .from("evaluation_question_bank")
+        .select("id,question_text,question_type,options,category,event_types,target_audiences,is_core,sort_priority,bank_version,measurement_dimension,score_map,scoring_method,recommended_weight")
+        .eq("is_active", true)
+        .eq("bank_version", "v2")
+        .order("sort_priority", { ascending:true });
+
+      if(error){
+        console.error("Question bank error:", error);
+        alert("تعذر تحميل بنك الأسئلة.");
+        return;
+      }
+
+      questionBank = data || [];
+    }
+
+    bankSelectedIds = new Set();
+    bankActiveCategory = "الكل";
+    bankOnlySuggested = true;
+
+    renderQuestionBankModal();
+  }
+
+
+  function renderQuestionBankModal(){
+
+    document.getElementById("questionBankModal")?.remove();
+
+    const suggestedType = inferEventType(eventData.title || "", eventData.description || "");
+    const categories = ["الكل", ...new Set(questionBank.map(q => q.category).filter(Boolean))];
+
+    const modal = document.createElement("div");
+    modal.id = "questionBankModal";
+    modal.className = "modal-backdrop";
+
+    modal.innerHTML = `
+      <section class="bank-modal" onclick="event.stopPropagation()">
+
+        <div class="bank-modal-head">
+          <div>
+            <h3>اختيار أسئلة من البنك</h3>
+            <p>الفعالية: ${escapeHtml(eventData.title)} — الفئة: ${escapeHtml(eventData.target_audience)} — بنك V2 الاحترافي</p>
+          </div>
+          <button id="closeBankModalBtn" class="modal-close" type="button">×</button>
+        </div>
+
+        <div class="bank-controls">
+          <label>
+            نوع الفعالية
+            <select id="bankEventTypeSelect">
+              ${getEventTypes().map(type => `
+                <option value="${escapeHtml(type)}" ${type === suggestedType ? "selected" : ""}>
+                  ${escapeHtml(type)}
+                </option>
+              `).join("")}
+            </select>
+          </label>
+
+          <label>
+            المجال
+            <select id="bankCategorySelect">
+              ${categories.map(cat => `<option value="${escapeHtml(cat)}">${escapeHtml(cat)}</option>`).join("")}
+            </select>
+          </label>
+
+          <label>
+            بحث في الأسئلة
+            <input id="bankSearchInput" type="text" placeholder="ابحثي بكلمة من السؤال...">
+          </label>
+        </div>
+
+        <div class="bank-mode-row">
+          <button id="suggestedOnlyBtn" class="filter-chip active" type="button">الأسئلة الأنسب</button>
+          <button id="showAllBankBtn" class="filter-chip" type="button">عرض كل البنك</button>
+        </div>
+
+        <div id="bankSummary" class="bank-summary"></div>
+        <div id="bankQuestionsList" class="bank-list"></div>
+
+        <div class="bank-modal-foot">
+          <div id="bankSelectedCount" class="selected-count">تم تحديد 0 سؤال</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button id="cancelBankBtn" class="btn btn-soft" type="button">إلغاء</button>
+            <button id="autoSelectRecommendedBtn" class="btn btn-gold" type="button">✦ تكوين نموذج مقترح (10 أسئلة)</button>
+            <button id="addSelectedBankBtn" class="btn btn-primary" type="button">إضافة الأسئلة المحددة</button>
+          </div>
+        </div>
+
+      </section>
+    `;
+
+    modal.addEventListener("click", closeQuestionBank);
+    document.body.appendChild(modal);
+
+    document.getElementById("closeBankModalBtn").onclick = closeQuestionBank;
+    document.getElementById("cancelBankBtn").onclick = closeQuestionBank;
+    document.getElementById("bankEventTypeSelect").onchange = renderBankQuestions;
+    document.getElementById("bankCategorySelect").onchange = function(){
+      bankActiveCategory = this.value;
+      renderBankQuestions();
+    };
+    document.getElementById("bankSearchInput").oninput = renderBankQuestions;
+
+    document.getElementById("suggestedOnlyBtn").onclick = function(){
+      bankOnlySuggested = true;
+      this.classList.add("active");
+      document.getElementById("showAllBankBtn").classList.remove("active");
+      renderBankQuestions();
+    };
+
+    document.getElementById("showAllBankBtn").onclick = function(){
+      bankOnlySuggested = false;
+      this.classList.add("active");
+      document.getElementById("suggestedOnlyBtn").classList.remove("active");
+      renderBankQuestions();
+    };
+
+    document.getElementById("autoSelectRecommendedBtn").onclick = autoSelectRecommendedQuestions;
+    document.getElementById("addSelectedBankBtn").onclick = addSelectedBankQuestions;
+
+    renderBankQuestions();
+  }
+
+
+  function closeQuestionBank(){
+    document.getElementById("questionBankModal")?.remove();
+  }
+
+
+  function getEventTypes(){
+    return [
+      "عام",
+      "ورشة تدريبية",
+      "برنامج تطوير مهني",
+      "ورشة إرشادية",
+      "لقاء تعريفي",
+      "اجتماع",
+      "فعالية مدرسية",
+      "فعالية طلابية",
+      "مناسبة وطنية",
+      "مناسبة توعوية",
+      "مبادرة مدرسية",
+      "مسابقة",
+      "معرض",
+      "زيارة",
+      "برنامج استقبال وتهيئة",
+      "نشاط ثقافي وقرائي",
+      "نشاط رياضي وترفيهي"
+    ];
+  }
+
+
+  function inferEventType(title, description){
+    const text = `${title} ${description}`.toLowerCase();
+
+    const rules = [
+      ["برنامج استقبال وتهيئة", ["استقبال", "تهيئة", "المستجد", "الصف الأول"]],
+      ["مناسبة وطنية", ["وطني", "العيد الوطني", "الميثاق", "البحرين", "انتماء", "مواطنة"]],
+      ["ورشة إرشادية", ["إرشاد", "ارشاد", "إرشادية", "ارشادية"]],
+      ["لقاء تعريفي", ["تعريفي", "تعريفية", "تهيئة أولياء"]],
+      ["برنامج تطوير مهني", ["تطوير مهني", "تمهين", "كفاءة مهنية"]],
+      ["ورشة تدريبية", ["ورشة", "تدريب", "تدريبية"]],
+      ["مسابقة", ["مسابقة", "تحدي", "منافسة"]],
+      ["معرض", ["معرض", "ركن"]],
+      ["نشاط ثقافي وقرائي", ["قراءة", "قرائي", "كتاب", "مكتبة", "ثقافي"]],
+      ["نشاط رياضي وترفيهي", ["رياضي", "رياضة", "ترفيهي", "ألعاب"]],
+      ["مناسبة توعوية", ["توعية", "توعوي", "صحة", "سلامة", "أمن"]],
+      ["اجتماع", ["اجتماع"]],
+      ["زيارة", ["زيارة"]],
+      ["فعالية طلابية", ["طلاب", "طلبة", "طلابي", "طلابية"]],
+      ["فعالية مدرسية", ["فعالية", "مدرسية", "مبادرة"]]
+    ];
+
+    for(const [type, words] of rules){
+      if(words.some(word => text.includes(word))) return type;
+    }
+
+    return "عام";
+  }
+
+
+  function normalizeAudience(value){
+    const v = String(value || "").trim();
+
+    if(["المعلمات","المعلمون","المعلمين","الهيئة التعليمية","الهيئة التدريسية"].includes(v))
+      return ["المعلمون","الهيئة التعليمية"];
+
+    if(["القيادة الوسطى","المنسقات","رؤساء الأقسام"].includes(v))
+      return ["القيادة الوسطى","الهيئة التعليمية","الهيئة الإدارية"];
+
+    if(["الطلبة","الطلاب"].includes(v)) return ["الطلبة"];
+    if(["أولياء الأمور","اولياء الامور","أولياء الامور"].includes(v)) return ["أولياء الأمور"];
+    if(["الهيئة الإدارية","الهيئة الادارية","الإداريات","الاداريات"].includes(v)) return ["الهيئة الإدارية"];
+
+    return [v];
+  }
+
+
+  function isAudienceCompatible(q){
+    const targets = Array.isArray(q.target_audiences) ? q.target_audiences : [];
+    if(targets.includes("الكل")) return true;
+
+    const audienceValues = normalizeAudience(eventData.target_audience);
+    return audienceValues.some(a => targets.includes(a));
+  }
+
+
+  function isTypeCompatible(q, selectedType){
+    const eventTypes = Array.isArray(q.event_types) ? q.event_types : [];
+    return q.is_core || eventTypes.includes("عام") || eventTypes.includes(selectedType);
+  }
+
+
+  function questionMatchScore(q, selectedType){
+    let score = 0;
+    const audienceValues = normalizeAudience(eventData.target_audience);
+    const eventTypes = Array.isArray(q.event_types) ? q.event_types : [];
+    const targets = Array.isArray(q.target_audiences) ? q.target_audiences : [];
+
+    if(!isAudienceCompatible(q)) return -100;
+    if(!isTypeCompatible(q, selectedType)) return -100;
+
+    if(q.is_core) score += 6;
+    if(eventTypes.includes(selectedType)) score += 7;
+    if(eventTypes.includes("عام")) score += 2;
+    if(targets.includes("الكل")) score += 2;
+    if(audienceValues.some(a => targets.includes(a))) score += 5;
+
+    if(q.scoring_method === "standard_5pt") score += 1;
+
+    return score;
+  }
+
+
+  function renderBankQuestions(){
+    const list = document.getElementById("bankQuestionsList");
+    if(!list) return;
+
+    const selectedType = document.getElementById("bankEventTypeSelect")?.value || "عام";
+    const search = String(document.getElementById("bankSearchInput")?.value || "").trim().toLowerCase();
+
+    let rows = questionBank
+      .map(q => ({ ...q, _score:questionMatchScore(q, selectedType) }))
+      .filter(q => bankActiveCategory === "الكل" || q.category === bankActiveCategory)
+      .filter(q => !search || String(q.question_text || "").toLowerCase().includes(search));
+
+    if(bankOnlySuggested){
+      rows = rows.filter(q => q._score > 0);
+    }
+
+    rows.sort((a,b) => b._score - a._score || Number(a.sort_priority || 100) - Number(b.sort_priority || 100));
+
+    document.getElementById("bankSummary").textContent =
+      bankOnlySuggested
+        ? `يعرض النظام ${rows.length} سؤالًا متوافقًا مع نوع الفعالية والفئة المستهدفة من بنك V2. استخدمي «تكوين نموذج مقترح» لاختيار 10 أسئلة متوازنة تلقائيًا.`
+        : `يتم عرض ${rows.length} سؤالًا من بنك الأسئلة.`;
+
+    if(!rows.length){
+      list.innerHTML = `<div class="empty-state"><strong>لا توجد أسئلة مطابقة لهذه الفلاتر</strong>جرّبي تغيير المجال أو الضغط على «عرض كل البنك».</div>`;
+      updateBankSelectedCount();
+      return;
+    }
+
+    list.innerHTML = rows.map(q => {
+      const selected = bankSelectedIds.has(q.id);
+      const typeLabels = {
+        scale:"مقياس 1–5", stars:"نجوم", text:"إجابة مفتوحة", short_text:"إجابة قصيرة",
+        single_choice:"اختيار واحد", multi_choice:"اختيارات متعددة", dropdown:"قائمة منسدلة", yes_no:"نعم / لا"
+      };
+      const typeLabel = typeLabels[q.question_type] || q.question_type;
+      return `
+        <label class="bank-item ${selected ? "selected" : ""}" data-bank-id="${q.id}">
+          <input class="bank-checkbox" type="checkbox" data-bank-id="${q.id}" ${selected ? "checked" : ""}>
+          <div>
+            <div class="bank-question-text">${escapeHtml(q.question_text)}</div>
+            <div class="bank-meta">
+              <span class="bank-badge">${escapeHtml(q.category)}</span>
+              ${q.is_core ? `<span class="bank-badge match">أساسي</span>` : ""}
+              ${q._score >= 7 ? `<span class="bank-badge match">مناسب جدًا</span>` : ""}
+            </div>
+          </div>
+          <div class="bank-type">${typeLabel}</div>
+        </label>
+      `;
+    }).join("");
+
+    document.querySelectorAll(".bank-checkbox").forEach(box => {
+      box.addEventListener("change", function(){
+        const id = this.dataset.bankId;
+        if(this.checked) bankSelectedIds.add(id);
+        else bankSelectedIds.delete(id);
+        this.closest(".bank-item")?.classList.toggle("selected", this.checked);
+        updateBankSelectedCount();
+      });
+    });
+
+    updateBankSelectedCount();
+  }
+
+
+  function autoSelectRecommendedQuestions(){
+    const selectedType = document.getElementById("bankEventTypeSelect")?.value || "عام";
+
+    const compatible = questionBank
+      .map(q => ({ ...q, _score:questionMatchScore(q, selectedType) }))
+      .filter(q => q._score > 0);
+
+    const core = compatible
+      .filter(q => q.is_core && !["text","short_text"].includes(q.question_type))
+      .sort((a,b) => Number(a.sort_priority || 100) - Number(b.sort_priority || 100))
+      .slice(0,5);
+
+    const specialized = compatible
+      .filter(q => !q.is_core && Array.isArray(q.event_types) && q.event_types.includes(selectedType))
+      .filter(q => !["text","short_text"].includes(q.question_type))
+      .sort((a,b) => b._score - a._score || Number(a.sort_priority || 100) - Number(b.sort_priority || 100))
+      .slice(0,4);
+
+    const open = compatible
+      .filter(q => !q.is_core && Array.isArray(q.event_types) && q.event_types.includes(selectedType))
+      .filter(q => ["text","short_text"].includes(q.question_type))
+      .sort((a,b) => Number(a.sort_priority || 100) - Number(b.sort_priority || 100))
+      .slice(0,1);
+
+    const chosen = [...core, ...specialized, ...open];
+
+    if(!chosen.length){
+      alert("لم أجد مجموعة مقترحة مناسبة لهذا النوع والفئة. يمكنك اختيار الأسئلة يدويًا من البنك.");
+      return;
+    }
+
+    bankSelectedIds = new Set(chosen.map(q => q.id));
+    renderBankQuestions();
+
+    const numericCount = chosen.filter(q => !["text","short_text"].includes(q.question_type)).length;
+    const openCount = chosen.length - numericCount;
+    document.getElementById("bankSummary").textContent =
+      `تم تكوين نموذج مقترح من ${chosen.length} أسئلة: ${numericCount} أسئلة قياس${openCount ? ` + ${openCount} سؤال مفتوح` : ""}. يمكنك تعديل الاختيار قبل الإضافة.`;
+  }
+
+
+  function updateBankSelectedCount(){
+    const el = document.getElementById("bankSelectedCount");
+    if(el) el.textContent = `تم تحديد ${bankSelectedIds.size} سؤال`;
+  }
+
+
+  function addSelectedBankQuestions(){
+    if(!bankSelectedIds.size){
+      alert("حددي سؤالًا واحدًا على الأقل من البنك.");
+      return;
+    }
+
+    const existingTexts = new Set(questions.map(q => String(q.question_text || "").trim()));
+    const selectedRows = questionBank.filter(q => bankSelectedIds.has(q.id));
+    let added = 0;
+
+    selectedRows.forEach(q => {
+      const text = String(q.question_text || "").trim();
+      if(!text || existingTexts.has(text)) return;
+
+      questions.push({
+        id:null,
+        question_text:text,
+        question_type:q.question_type,
+        options:["single_choice","multi_choice","dropdown","yes_no"].includes(q.question_type) && Array.isArray(q.options) ? [...q.options] : [],
+        required:["text","short_text"].includes(q.question_type) ? false : true,
+        sort_order:questions.length,
+        bank_question_id:q.id,
+        category:q.category || null,
+        measurement_dimension:q.measurement_dimension || q.category || null,
+        score_map:q.score_map || null,
+        scoring_method:q.scoring_method || "none",
+        recommended_weight:Number(q.recommended_weight || 1)
+      });
+
+      existingTexts.add(text);
+      added++;
+    });
+
+    normalizeSortOrder();
+    markChanged();
+    renderQuestions();
+    closeQuestionBank();
+
+    setSaveStatus(
+      added
+        ? `تمت إضافة ${added} سؤال من بنك الأسئلة. راجعيها ثم اضغطي «حفظ الأسئلة».`
+        : "الأسئلة المحددة موجودة بالفعل في النموذج.",
+      added ? "success" : ""
+    );
+  }
+
+
+  /* =========================================================
+     AI QUESTION GENERATION
+  ========================================================= */
+
+  async function generateAIQuestions(){
+
+    const aiBtn =
+      document.getElementById(
+        "aiGenerateBtn"
+      );
+
+
+    if(
+      questions.length > 0
+    ){
+
+      const ok =
+        confirm(
+          "يوجد بالفعل أسئلة في النموذج. هل تريدين استبدالها بالأسئلة التي سيولدها الذكاء الاصطناعي؟"
+        );
+
+
+      if(!ok){
+        return;
+      }
+
+    }
+
+
+    aiBtn.disabled =
+      true;
+
+
+    aiBtn.textContent =
+      "جاري توليد الأسئلة...";
+
+
+    setSaveStatus(
+      "يقوم الذكاء الاصطناعي الآن بإعداد أسئلة مناسبة للفعالية...",
+      ""
+    );
+
+
+    try{
+
+      const {
+        data,
+        error
+      } =
+        await sb.functions.invoke(
+          "generate-evaluation-questions",
+          {
+
+            body:{
+
+              title:
+                eventData.title,
+
+              target_audience:
+                eventData.target_audience,
+
+              description:
+                eventData.description ||
+                ""
+
+            }
+
+          }
+        );
+
+
+      if(error){
+
+        console.error(
+          "Function error:",
+          error
+        );
+
+
+        setSaveStatus(
+          "تعذر توليد الأسئلة. يرجى المحاولة مرة أخرى.",
+          "error"
+        );
+
+
+        return;
+      }
+
+
+      if(
+        !data ||
+        !Array.isArray(
+          data.questions
+        ) ||
+        data.questions.length ===
+        0
+      ){
+
+        console.error(
+          "Invalid AI response:",
+          data
+        );
+
+
+        setSaveStatus(
+          "لم يتم استلام أسئلة صالحة من الذكاء الاصطناعي.",
+          "error"
+        );
+
+
+        return;
+      }
+
+
+      questions =
+        data.questions
+
+          .slice(
+            0,
+            8
+          )
+
+          .map(
+            (
+              q,
+              index
+            )=>({
+
+              id:null,
+
+              question_text:
+                String(
+                  q.question_text ||
+                  ""
+                )
+                .trim(),
+
+              question_type:
+                [
+                  "single_choice",
+                  "stars",
+                  "text"
+                ]
+                .includes(
+                  q.question_type
+                )
+
+                  ?
+                  q.question_type
+
+                  :
+                  "single_choice",
+
+              options:
+                q.question_type ===
+                "single_choice"
+
+                &&
+                Array.isArray(
+                  q.options
+                )
+
+                  ?
+                  q.options
+                    .map(
+                      option =>
+                        String(
+                          option
+                        )
+                        .trim()
+                    )
+                    .filter(
+                      Boolean
+                    )
+
+                  :
+                  [],
+
+              required:
+                q.required !== false,
+
+              sort_order:
+                index
+
+            })
+          )
+
+          .filter(
+            q =>
+              q.question_text
+          );
+
+
+      if(
+        questions.length <
+        1
+      ){
+
+        setSaveStatus(
+          "لم يتم إنشاء أسئلة صالحة.",
+          "error"
+        );
+
+        return;
+      }
+
+
+      hasUnsavedChanges =
+        true;
+
+
+      renderQuestions();
+
+
+      setSaveStatus(
+        `تم توليد ${questions.length} أسئلة. راجعيها وعدّليها ثم اضغطي «حفظ الأسئلة».`,
+        "success"
+      );
+
+
+    }catch(error){
+
+      console.error(
+        "AI generation error:",
+        error
+      );
+
+
+      setSaveStatus(
+        "حدث خطأ أثناء الاتصال بخدمة الذكاء الاصطناعي.",
+        "error"
+      );
+
+    }finally{
+
+      aiBtn.disabled =
+        false;
+
+
+      aiBtn.textContent =
+        "✦ توليد الأسئلة";
+
+    }
+
+  }
+
+
+
+  /* =========================================================
+     ADD QUESTION
+  ========================================================= */
+
+  function addQuestion(){
+
+    questions.push({
+
+      id:null,
+
+      question_text:"",
+
+      question_type:
+        "single_choice",
+
+      options:[],
+
+      required:true,
+
+      sort_order:
+        questions.length,
+
+      bank_question_id:null,
+      category:null,
+      measurement_dimension:null,
+      score_map:null,
+      scoring_method:"none",
+      recommended_weight:1
+
+    });
+
+
+    markChanged();
+
+
+    renderQuestions();
+
+
+    setTimeout(
+      ()=>{
+
+        const all =
+          document.querySelectorAll(
+            ".question-text"
+          );
+
+
+        if(all.length){
+
+          all[
+            all.length - 1
+          ]
+          .focus();
+
+        }
+
+      },
+      50
+    );
+
+  }
+
+
+
+  /* =========================================================
+     RENDER QUESTIONS
+  ========================================================= */
+
+  function renderQuestions(){
+
+    const container =
+      document.getElementById(
+        "questionsContainer"
+      );
+
+
+    const count =
+      document.getElementById(
+        "questionsCount"
+      );
+
+
+    if(!container){
+      return;
+    }
+
+
+    if(count){
+
+      count.textContent =
+        `${questions.length} سؤال`;
+
+    }
+
+
+    if(
+      !questions.length
+    ){
+
+      container.innerHTML =
+        `
+
+        <div class="empty-state">
+
+          <strong>
+            لم تتم إضافة أسئلة حتى الآن
+          </strong>
+
+          اختاري من بنك الأسئلة،
+          أو أضيفي سؤالًا يدويًا،
+          ويمكن استخدام الذكاء الاصطناعي كخيار إضافي.
+
+        </div>
+
+        `;
+
+
+      return;
+    }
+
+
+    container.innerHTML =
+      questions
+        .map(
+          renderQuestionCard
+        )
+        .join("");
+
+
+    if(
+      eventData.status ===
+      "draft"
+    ){
+
+      bindQuestionEvents();
+
+    }
+
+  }
+
+
+
+  /* =========================================================
+     QUESTION CARD
+  ========================================================= */
+
+  function renderQuestionCard(
+    question,
+    index
+  ){
+
+    const optionsText =
+      Array.isArray(
+        question.options
+      )
+
+        ?
+        question.options.join(
+          "\n"
+        )
+
+        :
+        "";
+
+
+    const showOptions =
+      ["single_choice","multi_choice","dropdown"].includes(question.question_type);
+
+
+    const disabled =
+      eventData.status ===
+      "draft"
+
+        ?
+        ""
+
+        :
+        "disabled";
+
+
+    return `
+
+      <article
+        class="question-card"
+        data-index="${index}"
+      >
+
+
+        <div class="question-top">
+
+
+          <div class="question-number">
+
+            ${index + 1}
+
+          </div>
+
+
+          <div class="question-actions">
+
+
+            <button
+              type="button"
+
+              class="
+                small-btn
+                move
+                move-up-btn
+              "
+
+              data-index="${index}"
+
+              ${
+                index === 0 ||
+                eventData.status !==
+                "draft"
+
+                  ?
+                  "disabled"
+
+                  :
+                  ""
+              }
+            >
+              ↑
+            </button>
+
+
+            <button
+              type="button"
+
+              class="
+                small-btn
+                move
+                move-down-btn
+              "
+
+              data-index="${index}"
+
+              ${
+                index ===
+                questions.length - 1
+
+                ||
+                eventData.status !==
+                "draft"
+
+                  ?
+                  "disabled"
+
+                  :
+                  ""
+              }
+            >
+              ↓
+            </button>
+
+
+            <button
+              type="button"
+
+              class="
+                small-btn
+                delete
+                delete-question-btn
+              "
+
+              data-index="${index}"
+
+              ${
+                eventData.status !==
+                "draft"
+
+                  ?
+                  "disabled"
+
+                  :
+                  ""
+              }
+            >
+              حذف
+            </button>
+
+
+          </div>
+
+        </div>
+
+
+
+        ${question.measurement_dimension ? `
+          <div class="bank-meta" style="margin:0 0 12px;">
+            <span class="bank-badge match">المحور: ${escapeHtml(question.measurement_dimension)}</span>
+            ${question.bank_question_id ? `<span class="bank-badge">من بنك V2</span>` : ""}
+            ${question.scoring_method === "standard_5pt" ? `<span class="bank-badge">قياس موحّد 1–5</span>` : ""}
+          </div>
+        ` : ""}
+
+        <div class="question-grid">
+
+
+          <label>
+
+            نص السؤال
+
+            <textarea
+              class="question-text"
+
+              data-index="${index}"
+
+              placeholder="اكتبي سؤال التقييم..."
+
+              ${disabled}
+
+            >${escapeHtml(question.question_text)}</textarea>
+
+          </label>
+
+
+
+          <label>
+
+            نوع السؤال
+
+            <select
+              class="question-type"
+
+              data-index="${index}"
+
+              ${disabled}
+            >
+
+
+              <option value="short_text" ${question.question_type === "short_text" ? "selected" : ""}>نص قصير</option>
+              <option value="text" ${question.question_type === "text" ? "selected" : ""}>نص طويل / ملاحظات</option>
+              <option value="single_choice" ${question.question_type === "single_choice" ? "selected" : ""}>اختيار واحد</option>
+              <option value="multi_choice" ${question.question_type === "multi_choice" ? "selected" : ""}>اختيارات متعددة</option>
+              <option value="dropdown" ${question.question_type === "dropdown" ? "selected" : ""}>قائمة منسدلة</option>
+              <option value="stars" ${question.question_type === "stars" ? "selected" : ""}>تقييم بالنجوم</option>
+              <option value="scale" ${question.question_type === "scale" ? "selected" : ""}>مقياس من 1 إلى 5</option>
+              <option value="yes_no" ${question.question_type === "yes_no" ? "selected" : ""}>نعم / لا</option>
+
+
+            </select>
+
+          </label>
+
+
+
+          <label
+            class="
+              full
+              options-wrap
+              ${
+                showOptions
+                  ? ""
+                  : "hidden"
+              }
+            "
+          >
+
+            خيارات الإجابة / عناصر القائمة
+
+            <textarea
+              class="options-text"
+
+              data-index="${index}"
+
+              placeholder="اكتبي كل خيار في سطر مستقل"
+
+              ${disabled}
+
+            >${escapeHtml(optionsText)}</textarea>
+
+
+            <span class="help-text">
+
+              اكتبي كل خيار أو عنصر في سطر مستقل.
+
+            </span>
+
+          </label>
+
+
+        </div>
+
+
+
+        <label class="required-line">
+
+
+          <input
+            type="checkbox"
+
+            class="question-required"
+
+            data-index="${index}"
+
+            ${
+              question.required
+                ? "checked"
+                : ""
+            }
+
+            ${disabled}
+          >
+
+
+          سؤال مطلوب الإجابة عليه
+
+
+        </label>
+
+
+      </article>
+
+    `;
+
+  }
+
+
+
+  /* =========================================================
+     QUESTION EVENTS
+  ========================================================= */
+
+  function bindQuestionEvents(){
+
+    document
+      .querySelectorAll(
+        ".question-text"
+      )
+      .forEach(
+        el=>{
+
+          el.addEventListener(
+            "input",
+            function(){
+
+              const index =
+                Number(
+                  this.dataset.index
+                );
+
+
+              questions[
+                index
+              ]
+              .question_text =
+                this.value;
+
+
+              markChanged();
+
+            }
+          );
+
+        }
+      );
+
+
+    document
+      .querySelectorAll(
+        ".question-type"
+      )
+      .forEach(
+        el=>{
+
+          el.addEventListener(
+            "change",
+            function(){
+
+              const index =
+                Number(
+                  this.dataset.index
+                );
+
+
+              questions[
+                index
+              ]
+              .question_type =
+                this.value;
+
+
+              if(this.value === "yes_no") {
+                questions[index].options = ["نعم", "لا"];
+              } else if(!["single_choice","multi_choice","dropdown"].includes(this.value)) {
+                questions[index].options = [];
+              }
+
+
+              markChanged();
+
+              renderQuestions();
+
+            }
+          );
+
+        }
+      );
+
+
+    document
+      .querySelectorAll(
+        ".options-text"
+      )
+      .forEach(
+        el=>{
+
+          el.addEventListener(
+            "input",
+            function(){
+
+              const index =
+                Number(
+                  this.dataset.index
+                );
+
+
+              questions[
+                index
+              ]
+              .options =
+                this.value
+
+                  .split(
+                    "\n"
+                  )
+
+                  .map(
+                    x =>
+                      x.trim()
+                  )
+
+                  .filter(
+                    Boolean
+                  );
+
+
+              markChanged();
+
+            }
+          );
+
+        }
+      );
+
+
+    document
+      .querySelectorAll(
+        ".question-required"
+      )
+      .forEach(
+        el=>{
+
+          el.addEventListener(
+            "change",
+            function(){
+
+              const index =
+                Number(
+                  this.dataset.index
+                );
+
+
+              questions[
+                index
+              ]
+              .required =
+                this.checked;
+
+
+              markChanged();
+
+            }
+          );
+
+        }
+      );
+
+
+    document
+      .querySelectorAll(
+        ".delete-question-btn"
+      )
+      .forEach(
+        el=>{
+
+          el.addEventListener(
+            "click",
+            function(){
+
+              const index =
+                Number(
+                  this.dataset.index
+                );
+
+
+              const ok =
+                confirm(
+                  "هل تريدين حذف هذا السؤال؟"
+                );
+
+
+              if(!ok){
+                return;
+              }
+
+
+              questions.splice(
+                index,
+                1
+              );
+
+
+              normalizeSortOrder();
+
+              markChanged();
+
+              renderQuestions();
+
+            }
+          );
+
+        }
+      );
+
+
+    document
+      .querySelectorAll(
+        ".move-up-btn"
+      )
+      .forEach(
+        el=>{
+
+          el.addEventListener(
+            "click",
+            function(){
+
+              const index =
+                Number(
+                  this.dataset.index
+                );
+
+
+              if(
+                index <= 0
+              ){
+                return;
+              }
+
+
+              [
+                questions[
+                  index - 1
+                ],
+                questions[
+                  index
+                ]
+              ]
+              =
+              [
+                questions[
+                  index
+                ],
+                questions[
+                  index - 1
+                ]
+              ];
+
+
+              normalizeSortOrder();
+
+              markChanged();
+
+              renderQuestions();
+
+            }
+          );
+
+        }
+      );
+
+
+    document
+      .querySelectorAll(
+        ".move-down-btn"
+      )
+      .forEach(
+        el=>{
+
+          el.addEventListener(
+            "click",
+            function(){
+
+              const index =
+                Number(
+                  this.dataset.index
+                );
+
+
+              if(
+                index >=
+                questions.length - 1
+              ){
+                return;
+              }
+
+
+              [
+                questions[
+                  index
+                ],
+                questions[
+                  index + 1
+                ]
+              ]
+              =
+              [
+                questions[
+                  index + 1
+                ],
+                questions[
+                  index
+                ]
+              ];
+
+
+              normalizeSortOrder();
+
+              markChanged();
+
+              renderQuestions();
+
+            }
+          );
+
+        }
+      );
+
+  }
+
+
+
+  /* =========================================================
+     SORT
+  ========================================================= */
+
+  function normalizeSortOrder(){
+
+    questions.forEach(
+      (
+        q,
+        index
+      )=>{
+
+        q.sort_order =
+          index;
+
+      }
+    );
+
+  }
+
+
+
+  /* =========================================================
+     VALIDATION
+  ========================================================= */
+
+  function validateQuestions(){
+
+    if(
+      !questions.length
+    ){
+
+      return {
+
+        valid:false,
+
+        message:
+          "أضيفي سؤالًا واحدًا على الأقل قبل الحفظ."
+
+      };
+
+    }
+
+
+    for(
+      let i = 0;
+      i < questions.length;
+      i++
+    ){
+
+      const q =
+        questions[i];
+
+
+      if(
+        !String(
+          q.question_text ||
+          ""
+        )
+        .trim()
+      ){
+
+        return {
+
+          valid:false,
+
+          message:
+            `السؤال رقم ${i + 1} بدون نص.`
+
+        };
+
+      }
+
+
+      if(
+        ["single_choice","multi_choice","dropdown"].includes(q.question_type)
+      ){
+
+        if(
+          !Array.isArray(
+            q.options
+          )
+
+          ||
+          q.options.length <
+          2
+        ){
+
+          return {
+
+            valid:false,
+
+            message:
+              `السؤال رقم ${i + 1} يحتاج إلى خيارين على الأقل.`
+
+          };
+
+        }
+
+      }
+
+    }
+
+
+    return {
+      valid:true
+    };
+
+  }
+
+
+
+  /* =========================================================
+     SAVE QUESTIONS
+  ========================================================= */
+
+  async function saveQuestions(){
+
+    if(
+      eventData.status !==
+      "draft"
+    ){
+
+      return;
+    }
+
+
+    const validation =
+      validateQuestions();
+
+
+    if(
+      !validation.valid
+    ){
+
+      setSaveStatus(
+        validation.message,
+        "error"
+      );
+
+      return;
+    }
+
+
+    const saveBtn =
+      document.getElementById(
+        "saveQuestionsBtn"
+      );
+
+
+    saveBtn.disabled =
+      true;
+
+
+    saveBtn.textContent =
+      "جاري الحفظ...";
+
+
+    setSaveStatus(
+      "جاري حفظ الأسئلة...",
+      ""
+    );
+
+
+    try{
+
+      /*
+        مهم:
+        هذه الطريقة آمنة في المسودة فقط.
+        بعد النشر لا يسمح بالتعديل.
+      */
+
+      const deleteResult =
+        await sb
+          .from(
+            "evaluation_questions"
+          )
+          .delete()
+          .eq(
+            "event_id",
+            eventId
+          );
+
+
+      if(
+        deleteResult.error
+      ){
+
+        throw deleteResult.error;
+
+      }
+
+
+      normalizeSortOrder();
+
+
+      const rows =
+        questions.map(
+          (
+            q,
+            index
+          )=>({
+
+            event_id:
+              eventId,
+
+            question_text:
+              String(
+                q.question_text
+              )
+              .trim(),
+
+            question_type:
+              q.question_type,
+
+            options:
+              ["single_choice","multi_choice","dropdown","yes_no"].includes(q.question_type)
+
+                ?
+                q.options
+
+                :
+                null,
+
+            sort_order:
+              index,
+
+            required:
+              Boolean(
+                q.required
+              ),
+
+            bank_question_id:
+              q.bank_question_id || null,
+
+            category:
+              q.category || null,
+
+            measurement_dimension:
+              q.measurement_dimension || q.category || null,
+
+            score_map:
+              q.score_map || null,
+
+            scoring_method:
+              q.scoring_method || "none",
+
+            recommended_weight:
+              Number(q.recommended_weight || 1)
+
+          })
+        );
+
+
+      const insertResult =
+        await sb
+          .from(
+            "evaluation_questions"
+          )
+          .insert(
+            rows
+          )
+          .select();
+
+
+      if(
+        insertResult.error
+      ){
+
+        throw insertResult.error;
+
+      }
+
+
+      questions =
+        (
+          insertResult.data ||
+          []
+        )
+
+        .sort(
+          (
+            a,
+            b
+          )=>
+            a.sort_order -
+            b.sort_order
+        )
+
+        .map(
+          normalizeDbQuestion
+        );
+
+
+      hasUnsavedChanges =
+        false;
+
+
+      setSaveStatus(
+        "تم حفظ الأسئلة بنجاح. يمكنك الآن اعتماد ونشر التقييم.",
+        "success"
+      );
+
+
+      renderQuestions();
+
+
+    }catch(error){
+
+      console.error(
+        "Save questions error:",
+        error
+      );
+
+
+      setSaveStatus(
+        "حدث خطأ أثناء حفظ الأسئلة.",
+        "error"
+      );
+
+
+    }finally{
+
+      saveBtn.disabled =
+        false;
+
+
+      saveBtn.textContent =
+        "حفظ الأسئلة";
+
+    }
+
+  }
+
+
+
+  /* =========================================================
+     PUBLISH EVALUATION
+  ========================================================= */
+
+  async function publishEvaluation(){
+
+    if(
+      eventData.status !==
+      "draft"
+    ){
+
+      return;
+    }
+
+
+    if(
+      hasUnsavedChanges
+    ){
+
+      alert(
+        "يوجد تغييرات لم يتم حفظها. اضغطي «حفظ الأسئلة» أولًا ثم انشري التقييم."
+      );
+
+      return;
+    }
+
+
+    if(
+      !questions.length
+    ){
+
+      alert(
+        "لا يمكن نشر التقييم بدون أسئلة."
+      );
+
+      return;
+    }
+
+
+    const validation =
+      validateQuestions();
+
+
+    if(
+      !validation.valid
+    ){
+
+      alert(
+        validation.message
+      );
+
+      return;
+    }
+
+
+    const ok =
+      confirm(
+        "سيتم اعتماد التقييم ونشره للمستفيدين. بعد النشر سيتم إيقاف تعديل الأسئلة حفاظًا على صحة النتائج. هل تريدين المتابعة؟"
+      );
+
+
+    if(!ok){
+      return;
+    }
+
+
+    const publishBtn =
+      document.getElementById(
+        "publishBtn"
+      );
+
+
+    publishBtn.disabled =
+      true;
+
+
+    publishBtn.textContent =
+      "جاري النشر...";
+
+
+    setSaveStatus(
+      "جاري اعتماد ونشر التقييم...",
+      ""
+    );
+
+
+    try{
+
+      const {
+        data,
+        error
+      } =
+        await sb
+          .from(
+            "evaluation_events"
+          )
+          .update({
+
+            status:
+              "published",
+
+            updated_at:
+              new Date()
+              .toISOString()
+
+          })
+          .eq(
+            "id",
+            eventId
+          )
+          .select("*")
+          .single();
+
+
+      if(error){
+
+        throw error;
+
+      }
+
+
+      eventData =
+        data;
+
+
+      hasUnsavedChanges =
+        false;
+
+
+      /*
+        نعيد رسم الصفحة
+        حتى تتوقف أدوات التعديل
+        وتظهر حالة منشور.
+      */
+
+      renderBuilder();
+
+
+      setSaveStatus(
+        "تم اعتماد ونشر التقييم بنجاح.",
+        "success"
+      );
+
+
+      showPublicLink();
+
+
+    }catch(error){
+
+      console.error(
+        "Publish error:",
+        error
+      );
+
+
+      publishBtn.disabled =
+        false;
+
+
+      publishBtn.textContent =
+        "اعتماد ونشر التقييم";
+
+
+      setSaveStatus(
+        "تعذر نشر التقييم. يرجى المحاولة مرة أخرى.",
+        "error"
+      );
+
+    }
+
+  }
+
+
+
+  /* =========================================================
+     PUBLIC LINK
+  ========================================================= */
+
+  function getPublicEvaluationUrl(){
+
+    if(
+      !eventData ||
+      !eventData.public_token
+    ){
+
+      return "";
+
+    }
+
+
+    /*
+      نستخدم نفس مسار الموقع الحالي،
+      ونستبدل اسم الملف فقط.
+    */
+
+    const currentUrl =
+      new URL(
+        window.location.href
+      );
+
+
+    const pathname =
+      currentUrl.pathname;
+
+
+    const newPath =
+      pathname.replace(
+        /evaluation-create\.html$/i,
+        "evaluation-form.html"
+      );
+
+
+    return (
+      currentUrl.origin +
+      newPath +
+      "?t=" +
+      encodeURIComponent(
+        eventData.public_token
+      )
+    );
+
+  }
+
+
+
+  /* =========================================================
+     SHOW PUBLIC LINK
+  ========================================================= */
+
+  function showPublicLink(){
+
+    const container =
+      document.getElementById(
+        "publicLinkContainer"
+      );
+
+
+    const input =
+      document.getElementById(
+        "publicEvaluationLink"
+      );
+
+
+    const copyBtn =
+      document.getElementById(
+        "copyPublicLinkBtn"
+      );
+
+
+    const openBtn =
+      document.getElementById(
+        "openPublicLinkBtn"
+      );
+
+
+    if(
+      !container ||
+      !input
+    ){
+
+      return;
+    }
+
+
+    const publicUrl =
+      getPublicEvaluationUrl();
+
+
+    if(
+      !publicUrl
+    ){
+
+      return;
+    }
+
+
+    input.value =
+      publicUrl;
+
+
+    container.classList.remove(
+      "hidden"
+    );
+
+
+    if(copyBtn){
+
+      copyBtn.onclick =
+        async function(){
+
+          try{
+
+            await navigator
+              .clipboard
+              .writeText(
+                publicUrl
+              );
+
+
+            copyBtn.textContent =
+              "تم نسخ الرابط ✓";
+
+
+            setTimeout(
+              ()=>{
+
+                copyBtn.textContent =
+                  "نسخ الرابط";
+
+              },
+              1800
+            );
+
+
+          }catch(error){
+
+            input.focus();
+
+            input.select();
+
+
+            try{
+
+              document.execCommand(
+                "copy"
+              );
+
+
+              copyBtn.textContent =
+                "تم نسخ الرابط ✓";
+
+
+            }catch(copyError){
+
+              console.error(
+                copyError
+              );
+
+
+              copyBtn.textContent =
+                "حددي الرابط وانسخيه";
+
+            }
+
+          }
+
+        };
+
+    }
+
+
+    if(openBtn){
+
+      openBtn.onclick =
+        function(){
+
+          window.open(
+            publicUrl,
+            "_blank"
+          );
+
+        };
+
+    }
+
+  }
+
+
+
+  /* =========================================================
+     CHANGES
+  ========================================================= */
+
+  function markChanged(){
+
+    hasUnsavedChanges =
+      true;
+
+
+    setSaveStatus(
+      "توجد تغييرات لم يتم حفظها.",
+      ""
+    );
+
+  }
+
+
+
+  /* =========================================================
+     SAVE STATUS
+  ========================================================= */
+
+  function setSaveStatus(
+    text,
+    type
+  ){
+
+    const el =
+      document.getElementById(
+        "saveStatus"
+      );
+
+
+    if(!el){
+      return;
+    }
+
+
+    el.textContent =
+      text;
+
+
+    el.className =
+      "save-status" +
+      (
+        type
+          ? " " + type
+          : ""
+      );
+
+  }
+
+
+
+  /* =========================================================
+     ERROR
+  ========================================================= */
+
+  function renderError(
+    message
+  ){
+
+    document
+      .getElementById(
+        "mainContainer"
+      )
+      .innerHTML =
+      `
+
+      <section class="questions-panel">
+
+        <div class="empty-state">
+
+          <strong>
+            تعذر فتح التقييم
+          </strong>
+
+          ${
+            escapeHtml(
+              message
+            )
+          }
+
+
+          <div
+            style="
+              margin-top:16px;
+            "
+          >
+
+            <button
+              class="btn btn-primary"
+
+              onclick="
+                location.href=
+                'evaluations.html'
+              "
+            >
+
+              العودة للتقييمات
+
+            </button>
+
+          </div>
+
+        </div>
+
+      </section>
+
+      `;
+
+  }
+
+
+
+  /* =========================================================
+     ESCAPE HTML
+  ========================================================= */
+
+  function escapeHtml(
+    value
+  ){
+
+    return String(
+      value ?? ""
+    )
+
+    .replaceAll(
+      "&",
+      "&amp;"
+    )
+
+    .replaceAll(
+      "<",
+      "&lt;"
+    )
+
+    .replaceAll(
+      ">",
+      "&gt;"
+    )
+
+    .replaceAll(
+      '"',
+      "&quot;"
+    )
+
+    .replaceAll(
+      "'",
+      "&#039;"
+    );
+
+  }
+
+
+
+  /* =========================================================
+     UNSAVED WARNING
+  ========================================================= */
+
+  window.addEventListener(
+    "beforeunload",
+    function(e){
+
+      if(
+        !hasUnsavedChanges
+      ){
+
+        return;
+
+      }
+
+
+      e.preventDefault();
+
+      e.returnValue =
+        "";
+
+    }
+  );
+
+</script>
+
+</body>
+
+</html>

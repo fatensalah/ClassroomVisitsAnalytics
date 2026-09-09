@@ -1,0 +1,1220 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>استمارة تقييم فعالية</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+
+<style>
+    *{box-sizing:border-box}
+    :root{
+      --primary:#0e4b4d;
+      --primary-dark:#08393b;
+      --primary-soft:#edf6f4;
+      --gold:#b9964c;
+      --gold-soft:#fbf7ed;
+      --bg:#f3f6f5;
+      --card:#ffffff;
+      --text:#183f42;
+      --muted:#687b7d;
+      --border:#d6e1df;
+      --danger:#a94442;
+      --success:#287348;
+      --shadow:0 12px 32px rgba(15,55,58,.08);
+    }
+
+    body{
+      margin:0;
+      font-family:Tahoma,Arial,sans-serif;
+      background:var(--bg);
+      color:var(--text);
+    }
+
+    button,input,textarea,select{font:inherit}
+    .hidden{display:none!important}
+
+    .page-shell{
+      width:min(900px,calc(100% - 24px));
+      margin:18px auto 36px;
+    }
+
+    .toolbar{
+      display:flex;
+      justify-content:flex-end;
+      margin-bottom:10px;
+    }
+
+    .btn{
+      border:0;
+      border-radius:9px;
+      padding:10px 16px;
+      font-weight:700;
+      cursor:pointer;
+    }
+    .btn-primary{background:var(--primary);color:#fff}
+    .btn-soft{background:#fff;color:var(--primary);border:1px solid var(--border)}
+    .btn:disabled{opacity:.55;cursor:not-allowed}
+
+    .official-sheet{
+      background:var(--card);
+      border:1px solid #cfdad8;
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+
+    .school-header-wrap{
+      background:#fff;
+      text-align:center;
+      padding:10px 20px 6px;
+      border-bottom:1px solid #e8eeee;
+    }
+
+    .school-header{
+      display:block;
+      width:100%;
+      max-width:820px;
+      max-height:104px;
+      margin:0 auto;
+      object-fit:contain;
+    }
+
+    .committee-band{
+      background:#fff;
+      color:var(--primary-dark);
+      text-align:center;
+      padding:12px 20px 13px;
+      border-bottom:2px solid var(--primary);
+      position:relative;
+    }
+
+    .committee-band::after{
+      content:"";
+      width:58px;
+      height:3px;
+      position:absolute;
+      bottom:-2px;
+      right:50%;
+      transform:translateX(50%);
+      background:var(--gold);
+    }
+
+    .committee-band .committee{
+      font-size:.78rem;
+      color:var(--muted);
+      font-weight:700;
+      margin-bottom:3px;
+    }
+
+    .committee-band h1{
+      margin:0;
+      font-size:1.28rem;
+      color:var(--primary-dark);
+      font-weight:800;
+    }
+
+    .event-info{
+      padding:14px 24px 13px;
+      border-bottom:1px solid var(--border);
+      background:#fcfdfd;
+    }
+
+    .event-title{
+      margin:0 0 7px;
+      text-align:center;
+      color:var(--primary-dark);
+      font-size:1.15rem;
+      line-height:1.55;
+    }
+
+    .event-description{
+      margin:0 auto 8px;
+      max-width:720px;
+      text-align:center;
+      color:var(--muted);
+      line-height:1.65;
+      font-size:.82rem;
+    }
+
+    .event-meta{
+      display:flex;
+      justify-content:center;
+      flex-wrap:wrap;
+      gap:7px;
+    }
+
+    .meta-chip{
+      background:var(--primary-soft);
+      color:var(--primary);
+      border:1px solid #d9ebe7;
+      border-radius:8px;
+      padding:6px 10px;
+      font-size:.76rem;
+      font-weight:700;
+    }
+
+    .intro-note{
+      margin:14px 24px 0;
+      padding:10px 12px;
+      border:1px solid #eadfbd;
+      background:var(--gold-soft);
+      border-radius:9px;
+      color:#6a5a37;
+      font-size:.79rem;
+      line-height:1.7;
+    }
+
+    form{
+      padding:18px 24px 20px;
+    }
+
+    .section-title{
+      display:flex;
+      align-items:center;
+      gap:9px;
+      margin:0 0 12px;
+      font-size:.95rem;
+      color:var(--primary-dark);
+    }
+
+    .section-title::before{
+      content:"";
+      width:5px;
+      height:21px;
+      background:var(--gold);
+      border-radius:99px;
+    }
+
+    .question-card{
+      border:1px solid var(--border);
+      border-radius:11px;
+      padding:13px 14px;
+      margin-bottom:10px;
+      background:#fff;
+      page-break-inside:avoid;
+    }
+
+    .question-card.invalid{
+      border-color:#d9a3a1;
+      background:#fffafa;
+      box-shadow:0 0 0 2px rgba(169,68,66,.05);
+    }
+
+    .question-card.invalid .q-number{
+      background:var(--danger);
+    }
+
+    .question-head{
+      display:flex;
+      align-items:flex-start;
+      gap:9px;
+      margin-bottom:9px;
+    }
+
+    .q-number{
+      width:25px;
+      height:25px;
+      border-radius:7px;
+      flex:0 0 auto;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      color:#fff;
+      background:var(--primary);
+      font-weight:700;
+      font-size:.72rem;
+    }
+
+    .q-text{
+      flex:1;
+      font-weight:700;
+      line-height:1.6;
+      font-size:.86rem;
+      color:var(--text);
+      padding-top:1px;
+    }
+
+    .required-star{color:var(--danger);margin-right:3px}
+
+    .field-input,
+    .field-textarea,
+    .field-select{
+      width:100%;
+      border:1px solid #cbdad8;
+      border-radius:8px;
+      padding:9px 10px;
+      color:var(--text);
+      background:#fff;
+      outline:none;
+      font-size:.82rem;
+    }
+
+    .field-input:focus,
+    .field-textarea:focus,
+    .field-select:focus{
+      border-color:var(--primary);
+      box-shadow:0 0 0 2px rgba(14,75,77,.07);
+    }
+
+    .field-textarea{
+      min-height:82px;
+      resize:vertical;
+      line-height:1.6;
+    }
+
+    .choices{
+      display:grid;
+      gap:6px;
+    }
+
+    .choice{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      padding:7px 9px;
+      border:1px solid #dce6e4;
+      border-radius:8px;
+      background:#fbfdfc;
+      cursor:pointer;
+      font-size:.81rem;
+    }
+
+    .choice input{
+      width:16px;
+      height:16px;
+      accent-color:var(--primary);
+    }
+
+    .stars-wrap{
+      display:flex;
+      gap:6px;
+      direction:ltr;
+      justify-content:flex-end;
+      flex-wrap:wrap;
+    }
+
+    .star-btn{
+      width:38px;
+      height:36px;
+      border:1px solid #d7e2e0;
+      background:#fff;
+      border-radius:8px;
+      font-size:1.2rem;
+      color:#c3cbc9;
+      cursor:pointer;
+    }
+
+    .star-btn.active,
+    .star-btn:hover{
+      color:#b98b27;
+      background:#fffaf0;
+      border-color:#dfc77c;
+    }
+
+    .scale-wrap{
+      display:grid;
+      grid-template-columns:repeat(5,1fr);
+      gap:6px;
+    }
+
+    .scale-option input{display:none}
+
+    .scale-option span{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      height:36px;
+      border:1px solid #d6e2df;
+      border-radius:8px;
+      font-weight:700;
+      cursor:pointer;
+      background:#fff;
+      font-size:.8rem;
+    }
+
+    .scale-option input:checked + span{
+      background:var(--primary);
+      color:#fff;
+      border-color:var(--primary);
+    }
+
+    .scale-legend{
+      display:flex;
+      justify-content:space-between;
+      color:var(--muted);
+      font-size:.67rem;
+      margin-top:5px;
+    }
+
+    .validation-text{
+      display:none;
+      margin-top:7px;
+      color:var(--danger);
+      font-size:.72rem;
+      font-weight:700;
+    }
+
+    .question-card.invalid .validation-text{display:block}
+
+    .form-error{
+      margin:0 0 12px;
+      padding:9px 11px;
+      border-radius:8px;
+      background:#fbeeed;
+      color:var(--danger);
+      border:1px solid #efd2cf;
+      font-weight:700;
+      font-size:.78rem;
+    }
+
+    .submit-row{
+      display:flex;
+      justify-content:center;
+      margin-top:16px;
+    }
+
+    .submit-row .btn{min-width:190px}
+
+    .privacy-note{
+      margin:0 24px 12px;
+      padding:8px 10px;
+      border:1px solid var(--border);
+      border-radius:8px;
+      background:#fafcfc;
+      color:var(--muted);
+      font-size:.72rem;
+      line-height:1.6;
+      text-align:center;
+    }
+
+    .signatures{
+      border-top:1px solid var(--border);
+      padding:13px 24px 15px;
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:10px;
+      background:#fbfcfc;
+    }
+
+    .signature-box{
+      text-align:center;
+      padding:4px 6px;
+    }
+
+    .signature-box span{
+      display:block;
+      color:var(--muted);
+      font-size:.7rem;
+      margin-bottom:4px;
+    }
+
+    .signature-box strong{
+      display:block;
+      color:var(--primary-dark);
+      font-size:.82rem;
+      line-height:1.45;
+    }
+
+    .signature-box small{
+      display:block;
+      color:var(--muted);
+      font-size:.66rem;
+      margin-top:2px;
+    }
+
+    .loading,.state-card{
+      padding:50px 20px;
+      text-align:center;
+      background:#fff;
+      border:1px solid var(--border);
+      box-shadow:var(--shadow);
+      color:var(--muted);
+      line-height:1.8;
+    }
+
+    .state-card strong{
+      display:block;
+      color:var(--primary-dark);
+      font-size:1.1rem;
+      margin-bottom:6px;
+    }
+
+    .success-mark{
+      width:56px;
+      height:56px;
+      border-radius:50%;
+      margin:0 auto 13px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:#e5f3e9;
+      color:var(--success);
+      font-size:1.6rem;
+      font-weight:700;
+    }
+
+    .print-only{display:none}
+
+    @media(max-width:700px){
+      .page-shell{width:calc(100% - 12px);margin:8px auto 24px}
+      .school-header-wrap{padding:7px 8px 4px}
+      .school-header{max-height:88px}
+      .committee-band{padding:9px 10px 10px}
+      .committee-band h1{font-size:1.08rem}
+      .event-info{padding:11px 12px 10px}
+      .event-title{font-size:1rem}
+      .intro-note{margin:10px 12px 0}
+      form{padding:14px 12px 16px}
+      .question-card{padding:11px 10px}
+      .q-text{font-size:.82rem}
+      .privacy-note{margin-left:12px;margin-right:12px}
+      .signatures{
+        grid-template-columns:1fr;
+        padding-left:12px;
+        padding-right:12px;
+      }
+      .toolbar{justify-content:center}
+    }
+
+    @media print{
+      @page{size:A4;margin:8mm}
+      body{background:#fff}
+      .no-print{display:none!important}
+      .print-only{display:block}
+      .page-shell{width:100%;margin:0}
+      .official-sheet{box-shadow:none;border:1px solid #bfc8c6}
+      .school-header-wrap{padding:4px 8px 2px}
+      .school-header{max-height:76px}
+      .committee-band{padding:7px 10px 8px}
+      .committee-band h1{font-size:1rem}
+      .committee-band .committee{font-size:.66rem}
+      .event-info{padding:8px 12px}
+      .event-title{font-size:.92rem;margin-bottom:3px}
+      .event-description{font-size:.68rem;margin-bottom:5px}
+      .meta-chip{font-size:.63rem;padding:4px 7px}
+      form{padding:9px 12px 10px}
+      .section-title{font-size:.78rem;margin-bottom:7px}
+      .section-title::before{height:17px;width:4px}
+      .question-card{padding:7px 8px;margin-bottom:5px;border-radius:6px}
+      .question-head{margin-bottom:5px;gap:6px}
+      .q-number{width:20px;height:20px;font-size:.6rem;border-radius:5px}
+      .q-text{font-size:.68rem;line-height:1.4}
+      .field-input,.field-textarea,.field-select{padding:5px 6px;font-size:.65rem;border-radius:5px}
+      .field-textarea{min-height:42px}
+      .choice{padding:4px 6px;font-size:.64rem;border-radius:5px}
+      .choice input{width:12px;height:12px}
+      .star-btn{width:27px;height:25px;font-size:.85rem;border-radius:5px}
+      .scale-option span{height:25px;font-size:.64rem;border-radius:5px}
+      .scale-legend{font-size:.55rem}
+      .privacy-note{margin:0 12px 6px;padding:5px 6px;font-size:.58rem}
+      .signatures{padding:7px 12px 8px;gap:4px;grid-template-columns:repeat(3,1fr)}
+      .signature-box span{font-size:.57rem}
+      .signature-box strong{font-size:.65rem}
+      .signature-box small{font-size:.54rem}
+      input,textarea,select{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    }
+  
+    /* ===== Premium visual layer ===== */
+    body{
+      background:
+        radial-gradient(circle at 12% 10%, rgba(185,150,76,.11), transparent 24%),
+        radial-gradient(circle at 88% 18%, rgba(14,75,77,.10), transparent 28%),
+        linear-gradient(135deg,#eef5f3 0%,#faf8f2 48%,#eef4f2 100%);
+      background-attachment:fixed;
+    }
+
+    body::before{
+      content:"";
+      position:fixed;
+      inset:0;
+      pointer-events:none;
+      opacity:.24;
+      background-image:
+        linear-gradient(rgba(14,75,77,.035) 1px, transparent 1px),
+        linear-gradient(90deg,rgba(14,75,77,.035) 1px, transparent 1px);
+      background-size:34px 34px;
+      mask-image:linear-gradient(to bottom,black,transparent 78%);
+    }
+
+    .page-shell{
+      position:relative;
+      z-index:1;
+      margin-top:26px;
+      margin-bottom:46px;
+    }
+
+    .official-sheet{
+      border:1px solid rgba(14,75,77,.16);
+      border-radius:22px;
+      box-shadow:
+        0 24px 70px rgba(10,57,59,.13),
+        0 4px 14px rgba(10,57,59,.06);
+      position:relative;
+    }
+
+    .official-sheet::before{
+      content:"";
+      position:absolute;
+      top:0;
+      right:0;
+      left:0;
+      height:5px;
+      z-index:3;
+      background:linear-gradient(90deg,var(--primary-dark),var(--gold),var(--primary));
+    }
+
+    .school-header-wrap{
+      padding:16px 28px 10px;
+      background:
+        linear-gradient(180deg,#fff 0%,#fbfdfc 100%);
+    }
+
+    .committee-band{
+      background:
+        linear-gradient(90deg,rgba(14,75,77,.025),#fff 28%,#fff 72%,rgba(185,150,76,.04));
+      padding-top:15px;
+      padding-bottom:15px;
+    }
+
+    .committee-band .committee{
+      letter-spacing:.2px;
+    }
+
+    .committee-band h1{
+      font-size:1.38rem;
+    }
+
+    .event-info{
+      background:
+        linear-gradient(135deg,#f5faf8 0%,#fffdf8 100%);
+      padding-top:17px;
+      padding-bottom:16px;
+    }
+
+    .event-title{
+      font-size:1.22rem;
+    }
+
+    .meta-chip{
+      border-radius:999px;
+      padding:7px 13px;
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.65);
+    }
+
+    .intro-note{
+      position:relative;
+      overflow:hidden;
+      background:linear-gradient(90deg,#fffaf0,#fbf7ed);
+      border-color:#e7d8ad;
+      box-shadow:0 5px 16px rgba(185,150,76,.06);
+    }
+
+    .intro-note::before{
+      content:"";
+      position:absolute;
+      top:0;
+      bottom:0;
+      right:0;
+      width:4px;
+      background:var(--gold);
+    }
+
+    form{
+      background:
+        radial-gradient(circle at 100% 0%,rgba(14,75,77,.025),transparent 28%),
+        #fff;
+    }
+
+    .section-title{
+      margin-top:2px;
+      font-size:1rem;
+    }
+
+    .question-card{
+      background:
+        linear-gradient(135deg,#ffffff 0%,#fbfdfc 100%);
+      border-color:#dbe6e4;
+      box-shadow:0 5px 15px rgba(14,75,77,.035);
+      transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+    }
+
+    .question-card:hover{
+      transform:translateY(-1px);
+      border-color:#c4d8d4;
+      box-shadow:0 9px 22px rgba(14,75,77,.07);
+    }
+
+    .q-number{
+      box-shadow:0 4px 10px rgba(14,75,77,.16);
+    }
+
+    .field-input,.field-textarea,.field-select{
+      background:#fdfefe;
+    }
+
+    .choice{
+      transition:.15s ease;
+    }
+
+    .choice:hover{
+      border-color:#b9d2cd;
+      background:#f4faf8;
+    }
+
+    .submit-row .btn-primary{
+      min-width:220px;
+      padding:12px 22px;
+      border-radius:10px;
+      box-shadow:0 9px 22px rgba(14,75,77,.18);
+      transition:.16s ease;
+    }
+
+    .submit-row .btn-primary:hover{
+      transform:translateY(-1px);
+      background:var(--primary-dark);
+      box-shadow:0 12px 26px rgba(14,75,77,.22);
+    }
+
+    .privacy-note{
+      background:linear-gradient(90deg,#f8fbfa,#fffdf8);
+      border-color:#dce6e3;
+    }
+
+    .signatures{
+      background:
+        linear-gradient(135deg,#f7faf9,#fffdf8);
+      border-top:1px solid #d8e3e1;
+    }
+
+    .signature-box{
+      position:relative;
+    }
+
+    .signature-box:not(:last-child)::after{
+      content:"";
+      position:absolute;
+      top:8px;
+      bottom:8px;
+      left:0;
+      width:1px;
+      background:linear-gradient(transparent,#d5dfdd,transparent);
+    }
+
+    @media(max-width:700px){
+      body::before{background-size:26px 26px}
+      .official-sheet{border-radius:15px}
+      .school-header-wrap{padding:10px 10px 6px}
+      .signature-box::after{display:none!important}
+    }
+
+    @media print{
+      body{background:#fff!important}
+      body::before{display:none!important}
+      .official-sheet{border-radius:0;box-shadow:none}
+      .official-sheet::before{height:3px}
+      .question-card:hover{transform:none;box-shadow:none}
+    }
+
+  </style>
+
+  <style>
+    /* ===== تحسين طباعة الاستمارة: استغلال المساحة وتقليل الفراغات ===== */
+    @media print{
+      html,body{
+        margin:0!important;
+        padding:0!important;
+      }
+
+      .page-shell{
+        width:100%!important;
+        margin:0!important;
+        padding:0!important;
+      }
+
+      .official-sheet{
+        margin:0!important;
+        padding:0!important;
+        border-radius:0!important;
+        box-shadow:none!important;
+      }
+
+      .school-header-wrap{
+        padding:2px 8px 1px!important;
+      }
+
+      .school-header{
+        max-height:68px!important;
+      }
+
+      .committee-band{
+        padding:5px 10px 6px!important;
+      }
+
+      .committee-band h1{
+        margin:0!important;
+        line-height:1.25!important;
+      }
+
+      .event-info{
+        padding:5px 10px 5px!important;
+      }
+
+      .event-title{
+        margin:0 0 2px!important;
+        line-height:1.3!important;
+      }
+
+      .event-description{
+        margin:0 auto 3px!important;
+        line-height:1.35!important;
+      }
+
+      .event-meta{
+        gap:3px!important;
+      }
+
+      .meta-chip{
+        padding:3px 6px!important;
+      }
+
+      .intro-note,
+      .toolbar,
+      .no-print{
+        display:none!important;
+      }
+
+      form{
+        padding:4px 10px 6px!important;
+        margin:0!important;
+      }
+
+      .section-title{
+        margin:0 0 4px!important;
+        padding:0!important;
+        line-height:1.25!important;
+      }
+
+      .section-title::before{
+        height:14px!important;
+      }
+
+      #questionsArea{
+        margin:0!important;
+        padding:0!important;
+      }
+
+      .question-card{
+        margin:0 0 3px!important;
+        padding:5px 7px!important;
+        page-break-inside:avoid!important;
+        break-inside:avoid!important;
+      }
+
+      .question-head{
+        margin-bottom:3px!important;
+      }
+
+      .q-number{
+        width:18px!important;
+        height:18px!important;
+      }
+
+      .q-text{
+        line-height:1.25!important;
+      }
+
+      .choice{
+        padding:3px 5px!important;
+        line-height:1.2!important;
+      }
+
+      .choices{
+        gap:2px!important;
+      }
+
+      .field-input,
+      .field-textarea,
+      .field-select{
+        padding:4px 5px!important;
+        min-height:auto!important;
+      }
+
+      .field-textarea{
+        min-height:34px!important;
+      }
+
+      .scale-option span{
+        height:22px!important;
+      }
+
+      .stars-wrap{
+        gap:3px!important;
+      }
+
+      .star-btn{
+        width:24px!important;
+        height:22px!important;
+      }
+
+      .privacy-note{
+        margin:3px 10px!important;
+        padding:4px 5px!important;
+      }
+
+      .signatures{
+        padding:5px 10px 6px!important;
+      }
+    }
+  </style>
+
+</head>
+<body>
+  <div class="page-shell">
+    <main id="app">
+      <div class="loading">جاري تحميل استمارة التقييم...</div>
+    </main>
+  </div>
+
+  <script>
+    const sb = supabase.createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey);
+
+    let eventData = null;
+    let questions = [];
+    let token = null;
+    const starAnswers = new Map();
+
+    document.addEventListener("DOMContentLoaded", init);
+
+    async function init(){
+      token = new URLSearchParams(location.search).get("t");
+      if(!token){
+        renderState("تعذر فتح الاستمارة", "رابط التقييم غير مكتمل.");
+        return;
+      }
+      await loadPublicEvaluation();
+    }
+
+    async function loadPublicEvaluation(){
+      try{
+        const { data, error } = await sb.rpc(
+          "get_public_evaluation",
+          {
+            p_token: token
+          }
+        );
+
+        if(error || !data || !data.event){
+          console.error("Load public evaluation error:", error);
+          renderState("التقييم غير متاح", "قد يكون الرابط غير صحيح أو أن التقييم لم يعد منشورًا.");
+          return;
+        }
+
+        eventData = data.event;
+        questions = Array.isArray(data.questions) ? data.questions : [];
+        renderForm();
+
+        if(new URLSearchParams(location.search).get("print") === "1"){
+          setTimeout(()=>window.print(), 350);
+        }
+
+      }catch(error){
+        console.error("Load public evaluation error:", error);
+        renderState("تعذر تحميل الاستمارة", "يرجى إعادة المحاولة لاحقًا.");
+      }
+    }
+
+    function renderForm(){
+      const app = document.getElementById("app");
+      const description = eventData.description ? escapeHtml(eventData.description) : "";
+
+      app.innerHTML = `
+        <section class="official-sheet">
+          <div class="school-header-wrap">
+            <img class="school-header" src="school-header.jpg" alt="الترويسة الرسمية للمدرسة">
+          </div>
+
+          <div class="committee-band">
+            <div class="committee">لجنة التقييم الذاتي</div>
+            <h1>استمارة تقييم فعالية</h1>
+          </div>
+
+          <div class="event-info">
+            <h2 class="event-title">${escapeHtml(eventData.title)}</h2>
+            ${description ? `<p class="event-description">${description}</p>` : ""}
+            <div class="event-meta">
+              <span class="meta-chip">الفئة المستهدفة: ${escapeHtml(eventData.target_audience || "غير محددة")}</span>
+            </div>
+          </div>
+
+          <div class="intro-note no-print">
+            نأمل التكرم بالإجابة بدقة وموضوعية؛ حيث تُستخدم النتائج في قراءة أثر الفعالية وتحسين الممارسات المستقبلية.
+          </div>
+
+          <form id="evaluationForm" novalidate>
+            <h3 class="section-title">محاور التقييم</h3>
+            <div id="questionsArea">
+              ${questions.length ? questions.map(renderQuestion).join("") : `<div class="form-error">لا توجد أسئلة متاحة لهذا التقييم.</div>`}
+            </div>
+            <div id="formError" class="form-error hidden"></div>
+            <div class="submit-row no-print">
+              <button id="submitBtn" class="btn btn-primary" type="submit" ${questions.length ? "" : "disabled"}>إرسال التقييم</button>
+            </div>
+          </form>
+
+          <div class="privacy-note">
+            تُستخدم الإجابات لأغراض التقييم والتحسين وقراءة أثر الفعالية.
+          </div>
+
+          <div class="signatures">
+            <div class="signature-box">
+              <span>إعداد</span>
+              <strong>فاتن صلاح</strong>
+              <small>اختصاصي مصادر تعلم</small>
+            </div>
+            <div class="signature-box">
+              <span>المديرة المساعدة</span>
+              <strong>خلود الكعبي</strong>
+            </div>
+            <div class="signature-box">
+              <span>مديرة المدرسة</span>
+              <strong>أحلام السويدي</strong>
+            </div>
+          </div>
+        </section>
+      `;
+
+      document.getElementById("evaluationForm").addEventListener("submit", submitEvaluation);
+      bindStars();
+      bindValidationClear();
+    }
+
+    function renderQuestion(q, index){
+      const required = q.required !== false;
+      const req = required ? `<span class="required-star">*</span>` : "";
+      return `
+        <article class="question-card" data-question-id="${escapeHtml(q.id)}">
+          <div class="question-head">
+            <div class="q-number">${index + 1}</div>
+            <div class="q-text">${escapeHtml(q.question_text)} ${req}</div>
+          </div>
+          ${renderAnswerControl(q, index)}
+          <div class="validation-text">يرجى الإجابة على هذا السؤال.</div>
+        </article>
+      `;
+    }
+
+    function renderAnswerControl(q, index){
+      const name = `q_${q.id}`;
+      const options = Array.isArray(q.options) ? q.options : [];
+
+      switch(q.question_type){
+        case "short_text":
+          return `<input class="field-input answer-control" type="text" data-qid="${q.id}" placeholder="اكتبي الإجابة هنا">`;
+
+        case "text":
+          return `<textarea class="field-textarea answer-control" data-qid="${q.id}" placeholder="اكتبي ملاحظاتك أو مقترحاتك هنا"></textarea>`;
+
+        case "dropdown":
+          return `
+            <select class="field-select answer-control" data-qid="${q.id}">
+              <option value="">اختاري...</option>
+              ${options.map(o=>`<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("")}
+            </select>
+          `;
+
+        case "single_choice":
+        case "yes_no":
+          return `<div class="choices">${options.map((o,i)=>`
+            <label class="choice">
+              <input type="radio" name="${name}" data-qid="${q.id}" value="${escapeHtml(o)}">
+              <span>${escapeHtml(o)}</span>
+            </label>
+          `).join("")}</div>`;
+
+        case "multi_choice":
+          return `<div class="choices">${options.map((o,i)=>`
+            <label class="choice">
+              <input type="checkbox" name="${name}" data-qid="${q.id}" value="${escapeHtml(o)}">
+              <span>${escapeHtml(o)}</span>
+            </label>
+          `).join("")}</div>`;
+
+        case "stars":
+          return `<div class="stars-wrap" data-star-group="${q.id}">
+            ${[1,2,3,4,5].map(v=>`<button class="star-btn" type="button" data-qid="${q.id}" data-value="${v}" aria-label="${v} نجوم">★</button>`).join("")}
+          </div>`;
+
+        case "scale":
+          return `
+            <div class="scale-wrap">
+              ${[1,2,3,4,5].map(v=>`
+                <label class="scale-option">
+                  <input type="radio" name="${name}" data-qid="${q.id}" value="${v}">
+                  <span>${v}</span>
+                </label>
+              `).join("")}
+            </div>
+            <div class="scale-legend"><span>منخفض</span><span>مرتفع</span></div>
+          `;
+
+        default:
+          return `<input class="field-input answer-control" type="text" data-qid="${q.id}" placeholder="اكتبي الإجابة هنا">`;
+      }
+    }
+
+    function bindStars(){
+      document.querySelectorAll(".star-btn").forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          const qid = btn.dataset.qid;
+          const value = Number(btn.dataset.value);
+          starAnswers.set(qid, value);
+          document.querySelectorAll(`.star-btn[data-qid="${qid}"]`).forEach(star=>{
+            star.classList.toggle("active", Number(star.dataset.value) <= value);
+          });
+        });
+      });
+    }
+
+    function getAnswer(q){
+      const qid = q.id;
+      switch(q.question_type){
+        case "short_text":
+        case "text":
+        case "dropdown": {
+          const el = document.querySelector(`[data-qid="${qid}"].answer-control`);
+          return el ? String(el.value || "").trim() : "";
+        }
+        case "single_choice":
+        case "yes_no":
+        case "scale": {
+          const el = document.querySelector(`input[data-qid="${qid}"]:checked`);
+          return el ? el.value : "";
+        }
+        case "multi_choice":
+          return Array.from(document.querySelectorAll(`input[data-qid="${qid}"]:checked`)).map(el=>el.value);
+        case "stars":
+          return starAnswers.get(qid) || "";
+        default: {
+          const el = document.querySelector(`[data-qid="${qid}"]`);
+          return el ? String(el.value || "").trim() : "";
+        }
+      }
+    }
+
+    function isEmptyAnswer(q, value){
+      if(q.question_type === "multi_choice") return !Array.isArray(value) || value.length === 0;
+      return value === "" || value === null || value === undefined;
+    }
+
+    function bindValidationClear(){
+      document.querySelectorAll(".answer-control").forEach(el=>{
+        const eventName = (el.tagName === "SELECT" || el.type === "radio" || el.type === "checkbox")
+          ? "change"
+          : "input";
+
+        el.addEventListener(eventName, ()=>{
+          const qid = el.dataset.qid;
+          if(qid){
+            document.querySelector(`[data-question-id="${qid}"]`)?.classList.remove("invalid");
+          }
+        });
+      });
+
+      document.querySelectorAll(".star-btn").forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          const qid = btn.dataset.qid || btn.dataset.questionId;
+          if(qid){
+            document.querySelector(`[data-question-id="${qid}"]`)?.classList.remove("invalid");
+          }
+        });
+      });
+    }
+
+    async function submitEvaluation(e){
+      e.preventDefault();
+      const errorBox = document.getElementById("formError");
+      errorBox.classList.add("hidden");
+      errorBox.textContent = "";
+
+      document.querySelectorAll(".question-card.invalid").forEach(card=>{
+        card.classList.remove("invalid");
+      });
+
+      const answers = [];
+      for(let i=0;i<questions.length;i++){
+        const q = questions[i];
+        const value = getAnswer(q);
+        if(q.required !== false && isEmptyAnswer(q,value)){
+          errorBox.textContent = `يرجى الإجابة عن السؤال رقم ${i+1}: ${q.question_text}`;
+          errorBox.classList.remove("hidden");
+
+          const invalidCard = document.querySelector(`[data-question-id="${q.id}"]`);
+          if(invalidCard){
+            invalidCard.classList.add("invalid");
+            invalidCard.scrollIntoView({behavior:"smooth",block:"center"});
+          }
+          return;
+        }
+        if(!isEmptyAnswer(q,value)){
+          answers.push({question_id:q.id, value});
+        }
+      }
+
+      const submitBtn = document.getElementById("submitBtn");
+      submitBtn.disabled = true;
+      submitBtn.textContent = "جاري الإرسال...";
+
+      try{
+        const { data: submissionId, error: submitError } = await sb.rpc(
+          "submit_evaluation",
+          {
+            p_token: token,
+            p_answers: answers
+          }
+        );
+
+        if(submitError) throw submitError;
+
+        renderSuccess();
+      }catch(error){
+        console.error("Submit evaluation error:",error);
+        errorBox.textContent = "تعذر إرسال التقييم. يرجى المحاولة مرة أخرى.";
+        errorBox.classList.remove("hidden");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "إرسال التقييم";
+      }
+    }
+
+    function renderSuccess(){
+      document.getElementById("app").innerHTML = `
+        <section class="state-card">
+          <div class="success-mark">✓</div>
+          <strong>تم إرسال التقييم بنجاح</strong>
+          شكرًا لمشاركتك. تم حفظ استجابتك بنجاح.
+        </section>
+      `;
+      window.scrollTo({top:0,behavior:"smooth"});
+    }
+
+    function renderState(title,message){
+      document.getElementById("app").innerHTML = `
+        <section class="state-card">
+          <strong>${escapeHtml(title)}</strong>
+          ${escapeHtml(message)}
+        </section>
+      `;
+    }
+
+    function escapeHtml(value){
+      return String(value ?? "")
+        .replaceAll("&","&amp;")
+        .replaceAll("<","&lt;")
+        .replaceAll(">","&gt;")
+        .replaceAll('"',"&quot;")
+        .replaceAll("'","&#039;");
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,1772 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>نتائج تقييم الفعالية</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+
+  <style>
+    *{box-sizing:border-box}
+    :root{
+      --primary:#0e4b4d;
+      --primary-dark:#08393b;
+      --primary-soft:#edf6f4;
+      --gold:#b9964c;
+      --gold-soft:#fbf7ed;
+      --bg:#eef4f2;
+      --card:#fff;
+      --text:#173f42;
+      --muted:#6b7d7f;
+      --border:#d8e4e1;
+      --danger:#a94442;
+      --success:#287348;
+      --shadow:0 16px 42px rgba(10,57,59,.09);
+    }
+
+    body{
+      margin:0;
+      min-height:100vh;
+      font-family:Tahoma,Arial,sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(circle at 9% 7%,rgba(185,150,76,.11),transparent 24%),
+        radial-gradient(circle at 91% 12%,rgba(14,75,77,.09),transparent 28%),
+        linear-gradient(135deg,#edf4f2,#fbfaf6 50%,#edf4f2);
+    }
+
+    button,input,textarea,select{font:inherit}
+    button{cursor:pointer}
+    .hidden{display:none!important}
+
+    .page{
+      width:min(1320px,calc(100% - 28px));
+      margin:22px auto 48px;
+    }
+
+    .topbar{
+      position:relative;
+      overflow:hidden;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:14px;
+      padding:18px 20px;
+      background:#fff;
+      border:1px solid rgba(14,75,77,.14);
+      border-radius:20px;
+      box-shadow:var(--shadow);
+    }
+
+    .topbar::before{
+      content:"";
+      position:absolute;
+      top:0;right:0;left:0;height:4px;
+      background:linear-gradient(90deg,var(--primary-dark),var(--gold),var(--primary));
+    }
+
+    .topbar h1{margin:0 0 5px;font-size:1.45rem;color:var(--primary-dark)}
+    .topbar p{margin:0;color:var(--muted);font-size:.82rem;line-height:1.7}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}
+
+    .btn{
+      border:0;
+      border-radius:10px;
+      padding:10px 14px;
+      font-weight:700;
+    }
+    .btn-primary{background:var(--primary);color:#fff}
+    .btn-primary:hover{background:var(--primary-dark)}
+    .btn-soft{background:#fff;color:var(--primary);border:1px solid var(--border)}
+    .btn-gold{background:var(--gold-soft);color:#725b2d;border:1px solid #e7d6a8}
+    .btn-danger{background:#fff5f5;color:var(--danger);border:1px solid #efd2d2}
+
+    .layout{
+      display:grid;
+      grid-template-columns:330px minmax(0,1fr);
+      gap:16px;
+      align-items:start;
+      margin-top:16px;
+    }
+
+    .panel,.report{
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:18px;
+      box-shadow:var(--shadow);
+    }
+
+    .panel{
+      position:sticky;
+      top:12px;
+      padding:16px;
+    }
+
+    .panel h2{margin:0 0 5px;font-size:1rem;color:var(--primary-dark)}
+    .panel .help{margin:0 0 13px;color:var(--muted);font-size:.73rem;line-height:1.7}
+
+    .mode-switch{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      border:1px solid var(--border);
+      border-radius:10px;
+      overflow:hidden;
+      margin-bottom:12px;
+    }
+
+    .mode-switch button{
+      border:0;
+      background:#fff;
+      color:var(--muted);
+      padding:9px 5px;
+      font-weight:700;
+      font-size:.72rem;
+    }
+
+    .mode-switch button.active{background:var(--primary);color:#fff}
+
+    .control-group{
+      border-top:1px solid #edf1f0;
+      padding-top:12px;
+      margin-top:12px;
+    }
+
+    .control-group h3{margin:0 0 9px;font-size:.78rem;color:var(--primary-dark)}
+
+    .toggle-row{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:8px;
+      padding:7px 0;
+      font-size:.74rem;
+    }
+    .toggle-row input{accent-color:var(--primary)}
+
+    .field{margin-bottom:9px}
+    .field label{display:block;margin-bottom:5px;font-size:.7rem;font-weight:700}
+    .field input,.field textarea,.field select{
+      width:100%;
+      border:1px solid #cfddda;
+      border-radius:8px;
+      padding:8px 9px;
+      outline:none;
+      background:#fff;
+      color:var(--text);
+      font-size:.74rem;
+    }
+    .field textarea{min-height:82px;resize:vertical;line-height:1.6}
+    .field input:focus,.field textarea:focus,.field select:focus{
+      border-color:var(--primary);
+      box-shadow:0 0 0 2px rgba(14,75,77,.07);
+    }
+
+    .note-list{display:grid;gap:7px;margin-top:9px}
+    .note-chip{
+      padding:8px;
+      border:1px solid var(--border);
+      border-radius:9px;
+      background:#fbfdfc;
+      font-size:.69rem;
+      line-height:1.55;
+    }
+    .note-chip strong{display:block;color:var(--primary-dark);margin-bottom:3px}
+    .note-chip button{
+      margin-top:5px;
+      border:0;
+      background:transparent;
+      color:var(--danger);
+      font-size:.65rem;
+      font-weight:700;
+    }
+
+    .report{overflow:hidden}
+
+    .report-head{
+      position:relative;
+      padding:16px 24px 18px;
+      background:linear-gradient(135deg,#f6faf9,#fffdf8);
+      border-bottom:1px solid var(--border);
+    }
+
+    .report-head::before{
+      content:"";
+      position:absolute;
+      top:0;right:0;left:0;height:4px;
+      background:linear-gradient(90deg,var(--primary-dark),var(--gold),var(--primary));
+    }
+
+    .school-header{
+      display:block;
+      width:100%;
+      max-width:850px;
+      max-height:104px;
+      object-fit:contain;
+      margin:0 auto 10px;
+    }
+
+    .committee{text-align:center;color:var(--muted);font-size:.71rem;font-weight:700;margin-bottom:3px}
+    .report-head h2{margin:0;text-align:center;color:var(--primary-dark);font-size:1.28rem}
+    .event-title{text-align:center;margin:12px 0 4px;font-size:1.12rem;color:var(--primary-dark)}
+
+    .event-meta{
+      display:flex;
+      justify-content:center;
+      flex-wrap:wrap;
+      gap:7px;
+      margin-top:8px;
+    }
+
+    .chip{
+      padding:6px 10px;
+      border-radius:999px;
+      background:var(--primary-soft);
+      color:var(--primary);
+      font-size:.7rem;
+      font-weight:700;
+    }
+
+    .method-note{
+      margin:14px 18px 0;
+      padding:9px 11px;
+      border:1px solid #e7d7aa;
+      border-radius:9px;
+      background:var(--gold-soft);
+      color:#725f34;
+      font-size:.71rem;
+      line-height:1.65;
+    }
+
+    .dashboard{
+      padding:16px 18px 4px;
+    }
+
+    .dashboard-title{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:10px;
+    }
+    .dashboard-title h3{
+      margin:0;
+      font-size:.92rem;
+      color:var(--primary-dark);
+    }
+    .dashboard-title span{
+      color:var(--muted);
+      font-size:.67rem;
+    }
+
+    .kpis{
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:10px;
+    }
+
+    .kpi{
+      min-height:92px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      text-align:center;
+      border:1px solid var(--border);
+      border-radius:13px;
+      background:linear-gradient(145deg,#fff,#fbfdfc);
+      box-shadow:0 5px 14px rgba(10,57,59,.035);
+    }
+    .kpi span{display:block;color:var(--muted);font-size:.68rem;margin-bottom:6px}
+    .kpi strong{font-size:1.45rem;color:var(--primary-dark)}
+    .kpi small{margin-top:3px;font-size:.59rem;color:var(--muted)}
+
+    .domain-grid{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:10px;
+    }
+
+    .domain-card{
+      border:1px solid var(--border);
+      border-radius:13px;
+      background:linear-gradient(145deg,#fff,#fbfdfc);
+      padding:12px;
+      page-break-inside:avoid;
+    }
+
+    .domain-card-top{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:8px;
+      margin-bottom:8px;
+    }
+
+    .domain-name{font-size:.72rem;font-weight:800;color:var(--primary-dark)}
+    .domain-score{font-size:.86rem;font-weight:900;color:var(--primary-dark)}
+    .domain-track{height:9px;border-radius:99px;background:#edf3f1;overflow:hidden}
+    .domain-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--primary-dark),var(--primary),#3e8584)}
+    .domain-meta{margin-top:6px;color:var(--muted);font-size:.59rem;line-height:1.5}
+
+    .insight-grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+    }
+
+    .insight-card{
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:12px;
+      background:#fbfdfc;
+      page-break-inside:avoid;
+    }
+
+    .insight-card strong{display:block;color:var(--primary-dark);font-size:.76rem;margin-bottom:5px}
+    .insight-card p{margin:0;color:var(--muted);font-size:.68rem;line-height:1.7}
+
+    .section{padding:16px 18px 0}
+
+    .section-title{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      margin:0 0 10px;
+      color:var(--primary-dark);
+      font-size:.93rem;
+    }
+    .section-title::before{
+      content:"";
+      width:4px;
+      height:19px;
+      border-radius:99px;
+      background:var(--gold);
+    }
+
+    .results-table-wrap{
+      overflow:auto;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:#fff;
+    }
+
+    .results-table{
+      width:100%;
+      border-collapse:collapse;
+      min-width:720px;
+    }
+
+    .results-table th{
+      background:linear-gradient(135deg,var(--primary-dark),var(--primary));
+      color:#fff;
+      font-size:.72rem;
+      text-align:right;
+      padding:10px 11px;
+      border-left:1px solid rgba(255,255,255,.12);
+    }
+
+    .results-table td{
+      padding:10px 11px;
+      border-top:1px solid #e8efed;
+      border-left:1px solid #edf2f1;
+      vertical-align:middle;
+      font-size:.72rem;
+      line-height:1.55;
+    }
+
+    .results-table tr:nth-child(even) td{background:#fbfdfc}
+    .col-number{width:45px;text-align:center!important}
+    .col-percent{width:150px;text-align:center!important}
+    .col-reading{width:220px}
+
+    .percent-box{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-width:76px;
+      padding:7px 9px;
+      border-radius:8px;
+      background:var(--primary-soft);
+      color:var(--primary-dark);
+      font-weight:800;
+      font-size:.78rem;
+    }
+
+    .reading{
+      color:var(--muted);
+      font-size:.67rem;
+      line-height:1.5;
+    }
+
+    .chart-card{
+      margin-top:12px;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:linear-gradient(145deg,#fff,#fbfdfc);
+      padding:14px;
+    }
+
+    .chart-title{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:8px;
+      margin-bottom:12px;
+    }
+    .chart-title strong{font-size:.8rem;color:var(--primary-dark)}
+    .chart-title span{font-size:.62rem;color:var(--muted)}
+
+    .summary-chart{display:grid;gap:9px}
+
+    .summary-bar{
+      display:grid;
+      grid-template-columns:minmax(180px,1.5fr) 2.5fr 66px;
+      gap:9px;
+      align-items:center;
+      font-size:.67rem;
+    }
+
+    .summary-label{
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      color:var(--text);
+    }
+
+    .summary-track{
+      height:14px;
+      border-radius:99px;
+      background:#edf3f1;
+      overflow:hidden;
+      box-shadow:inset 0 0 0 1px rgba(14,75,77,.035);
+    }
+
+    .summary-fill{
+      height:100%;
+      border-radius:99px;
+      background:linear-gradient(90deg,var(--primary-dark),var(--primary),#3e8584);
+    }
+
+    .summary-value{
+      text-align:left;
+      color:var(--primary-dark);
+      font-weight:800;
+    }
+
+    .question-card{
+      position:relative;
+      padding:13px;
+      margin-bottom:10px;
+      border:1px solid var(--border);
+      border-radius:12px;
+      background:#fff;
+      page-break-inside:avoid;
+    }
+
+    .question-card.report-hidden{
+      opacity:.45;
+      border-style:dashed;
+    }
+
+    .question-top{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:10px;
+      margin-bottom:10px;
+    }
+
+    .question-title{
+      font-size:.81rem;
+      font-weight:700;
+      line-height:1.55;
+    }
+
+    .admin-tools{display:flex;gap:5px;flex-wrap:wrap}
+
+    .mini-btn{
+      border:1px solid var(--border);
+      background:#fff;
+      color:var(--muted);
+      border-radius:7px;
+      padding:5px 7px;
+      font-size:.62rem;
+      font-weight:700;
+    }
+    .mini-btn.active{
+      background:#fff1f1;
+      color:var(--danger);
+      border-color:#e7c2c2;
+    }
+
+    .metric-line{
+      display:flex;
+      flex-wrap:wrap;
+      gap:7px;
+      margin-bottom:8px;
+    }
+    .metric{
+      padding:6px 8px;
+      border:1px solid var(--border);
+      border-radius:8px;
+      background:#f8fbfa;
+      color:var(--muted);
+      font-size:.66rem;
+    }
+    .metric strong{color:var(--primary-dark)}
+
+    .dist-table{
+      width:100%;
+      border-collapse:collapse;
+      margin-top:7px;
+    }
+    .dist-table td{
+      padding:6px 5px;
+      border-top:1px solid #edf2f1;
+      font-size:.66rem;
+      vertical-align:middle;
+    }
+    .dist-label{width:35%}
+    .dist-bar-cell{width:45%}
+    .dist-value{width:20%;text-align:left;font-weight:700;color:var(--muted)}
+
+    .dist-track{
+      width:100%;
+      height:9px;
+      border-radius:99px;
+      background:#edf3f1;
+      overflow:hidden;
+    }
+    .dist-fill{
+      height:100%;
+      border-radius:99px;
+      background:linear-gradient(90deg,var(--primary),#408380);
+    }
+
+    .comment{
+      position:relative;
+      padding:9px 10px;
+      margin-bottom:7px;
+      border:1px solid #e3e9e7;
+      border-radius:9px;
+      background:#fbfdfc;
+      font-size:.72rem;
+      line-height:1.65;
+    }
+    .comment.excluded{opacity:.42;border-style:dashed}
+    .comment-tools{margin-top:6px}
+    .comment-tools button{
+      border:0;
+      background:transparent;
+      color:var(--danger);
+      font-size:.62rem;
+      font-weight:700;
+    }
+
+    .admin-note{
+      margin-bottom:8px;
+      padding:10px 11px;
+      border:1px solid #e6d6aa;
+      border-radius:10px;
+      background:#fffaf0;
+      font-size:.72rem;
+      line-height:1.65;
+    }
+    .admin-note small{
+      display:block;
+      margin-bottom:3px;
+      color:#8b7341;
+      font-size:.61rem;
+      font-weight:700;
+    }
+
+    .free-note{
+      margin-top:9px;
+      padding:11px 12px;
+      border:1px solid #d6e5e1;
+      border-radius:10px;
+      background:#f8fbfa;
+      font-size:.72rem;
+      line-height:1.7;
+    }
+    .free-note strong{display:block;margin-bottom:4px;color:var(--primary-dark)}
+
+    .empty,.loading,.error{
+      padding:35px 18px;
+      text-align:center;
+      color:var(--muted);
+      line-height:1.8;
+    }
+    .error{color:var(--danger)}
+
+    .report-footer{
+      margin-top:17px;
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:10px;
+      padding:15px 18px 17px;
+      border-top:1px solid var(--border);
+      background:linear-gradient(135deg,#f8fbfa,#fffdf9);
+      text-align:center;
+    }
+    .report-footer span{display:block;color:var(--muted);font-size:.64rem;margin-bottom:4px}
+    .report-footer strong{display:block;color:var(--primary-dark);font-size:.78rem}
+    .report-footer small{display:block;margin-top:2px;color:var(--muted);font-size:.59rem}
+
+    body.report-mode .admin-only{display:none!important}
+    body.report-mode .layout{display:block}
+    body.report-mode .report{
+      width:min(980px,100%);
+      margin:0 auto;
+    }
+    body.report-mode .question-card.report-hidden{display:none!important}
+    body.report-mode .comment.excluded{display:none!important}
+
+    @media(max-width:980px){
+      .layout{grid-template-columns:1fr}
+      .panel{position:static}
+    }
+
+    @media(max-width:720px){
+      .topbar{flex-direction:column;align-items:flex-start}
+      .kpis{grid-template-columns:repeat(2,1fr)}
+      .summary-bar{grid-template-columns:1fr}
+      .summary-value{text-align:right}
+      .report-footer{grid-template-columns:1fr}
+      .domain-grid,.insight-grid{grid-template-columns:1fr}
+    }
+
+    @media print{
+      @page{size:A4;margin:8mm}
+      body{background:#fff!important}
+      .admin-only,.topbar{display:none!important}
+      .page{width:100%;margin:0}
+      .layout{display:block;margin:0}
+      .report{
+        width:100%!important;
+        margin:0!important;
+        border:1px solid #cfd9d7;
+        border-radius:0;
+        box-shadow:none;
+      }
+      .report-head{padding:10px 12px}
+      .school-header{max-height:78px}
+      .method-note{margin:8px 12px 0;font-size:.6rem}
+      .dashboard{padding:9px 12px 3px}
+      .kpis{gap:6px}
+      .kpi{min-height:62px}
+      .kpi strong{font-size:1rem}
+      .section{padding:9px 12px 0}
+      .results-table th{font-size:.59rem;padding:6px}
+      .results-table td{font-size:.58rem;padding:6px}
+      .percent-box{font-size:.61rem;min-width:55px;padding:4px 5px}
+      .chart-card{padding:8px}
+      .summary-bar{grid-template-columns:minmax(120px,1.5fr) 2.5fr 50px;font-size:.56rem}
+      .summary-track{height:9px}
+      .question-card{padding:8px;margin-bottom:6px;border-radius:7px}
+      .question-title{font-size:.66rem}
+      .metric{font-size:.55rem;padding:4px 5px}
+      .dist-table td{font-size:.54rem;padding:4px}
+      .comment,.admin-note,.free-note{font-size:.58rem;padding:6px 7px}
+      .report-footer{padding:8px 12px;grid-template-columns:repeat(3,1fr)}
+      .domain-grid{grid-template-columns:repeat(3,1fr);gap:5px}
+      .domain-card{padding:7px}
+      .domain-name{font-size:.56rem}.domain-score{font-size:.66rem}.domain-meta{font-size:.48rem}
+      .insight-card{padding:7px}.insight-card strong{font-size:.58rem}.insight-card p{font-size:.52rem}
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <header class="topbar admin-only">
+      <div>
+        <h1>لوحة نتائج تقييم الفعالية</h1>
+        <p>تحليل واضح للنتائج مع إعداد نسخة تقرير رسمية قابلة للتخصيص والطباعة.</p>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-soft" type="button" onclick="location.href='evaluations.html'">العودة للتقييمات</button>
+        <button class="btn btn-gold" type="button" onclick="setMode('report')">معاينة التقرير الرسمي</button>
+        <button id="saveReportBtn" class="btn btn-primary" type="button" onclick="saveReportSettings(true)">حفظ واعتماد التقرير</button>
+        <button class="btn btn-soft" type="button" onclick="window.print()">طباعة التقرير</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="panel admin-only">
+        <h2>إعداد التقرير</h2>
+        <p class="help">
+          خصّصي ما يظهر في النسخة الرسمية دون حذف أو تغيير الاستجابات الأصلية.
+        </p>
+
+        <div class="mode-switch">
+          <button id="fullModeBtn" class="active" type="button" onclick="setMode('full')">التحليل الكامل</button>
+          <button id="reportModeBtn" type="button" onclick="setMode('report')">العرض الرسمي</button>
+        </div>
+
+        <div class="control-group">
+          <h3>عناصر التقرير</h3>
+
+          <label class="toggle-row">
+            <span>إظهار عدد الاستجابات</span>
+            <input id="showCountToggle" type="checkbox" checked>
+          </label>
+
+          <label class="toggle-row">
+            <span>إظهار الفئة المستهدفة</span>
+            <input id="showAudienceToggle" type="checkbox" checked>
+          </label>
+
+          <label class="toggle-row">
+            <span>إظهار التحليل التفصيلي</span>
+            <input id="showDetailsToggle" type="checkbox" checked>
+          </label>
+
+          <label class="toggle-row">
+            <span>إظهار الأسئلة النصية</span>
+            <input id="showTextToggle" type="checkbox" checked>
+          </label>
+        </div>
+
+        <div class="control-group">
+          <h3>إضافة إدارية للتقرير</h3>
+
+          <div class="field">
+            <label>نوع الإضافة</label>
+            <select id="noteType">
+              <option>نقطة قوة</option>
+              <option>سياق داعم</option>
+              <option>تفسير للنتيجة</option>
+              <option>إجراء تحسين</option>
+              <option>ملاحظة</option>
+              <option>تعليق إداري</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>العنوان</label>
+            <input id="noteTitle" type="text" maxlength="140" placeholder="مثال: أثر الفعالية">
+          </div>
+
+          <div class="field">
+            <label>النص</label>
+            <textarea id="noteText" maxlength="1200" placeholder="اكتبي أي تعليق أو ملاحظة تريدين ظهورها في التقرير..."></textarea>
+          </div>
+
+          <button class="btn btn-primary" type="button" style="width:100%" onclick="addAdminNote()">إضافة للتقرير</button>
+          <div id="noteList" class="note-list"></div>
+        </div>
+
+        <div class="control-group">
+          <h3>ملاحظة حرة</h3>
+          <div class="field">
+            <label>عنوان اختياري</label>
+            <input id="freeNoteTitle" type="text" maxlength="140" placeholder="مثال: ملاحظة ختامية">
+          </div>
+          <div class="field">
+            <label>النص</label>
+            <textarea id="freeNoteText" maxlength="1600" placeholder="اكتبي أي نص إضافي تريدينه..."></textarea>
+          </div>
+          <button class="btn btn-soft" type="button" style="width:100%" onclick="saveFreeNote()">حفظ الملاحظة الحرة</button>
+        </div>
+      </aside>
+
+      <main id="report" class="report">
+        <div class="loading">جاري تحميل النتائج...</div>
+      </main>
+    </div>
+  </div>
+
+<script>
+  const sb = supabase.createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey);
+
+  let eventData = null;
+  let questions = [];
+  let submissions = [];
+  let answers = [];
+
+  const state = {
+    mode:"full",
+    showCount:true,
+    showAudience:true,
+    showDetails:true,
+    showText:true,
+    hiddenQuestions:new Set(),
+    hiddenAnswers:new Set(),
+    adminNotes:[],
+    freeNoteTitle:"",
+    freeNoteText:""
+  };
+
+  document.addEventListener("DOMContentLoaded", init);
+
+  async function init(){
+    const {data:{session},error} = await sb.auth.getSession();
+
+    if(error || !session){
+      location.href = "index.html";
+      return;
+    }
+
+    const eventId = new URLSearchParams(location.search).get("id");
+
+    if(!eventId){
+      renderError("رابط النتائج غير مكتمل.");
+      return;
+    }
+
+    await loadReportSettings(eventId);
+    bindControls(eventId);
+    await loadResults(eventId);
+  }
+
+  function bindControls(eventId){
+    const showCount = document.getElementById("showCountToggle");
+    const showAudience = document.getElementById("showAudienceToggle");
+    const showDetails = document.getElementById("showDetailsToggle");
+    const showText = document.getElementById("showTextToggle");
+
+    showCount.checked = state.showCount;
+    showAudience.checked = state.showAudience;
+    showDetails.checked = state.showDetails;
+    showText.checked = state.showText;
+
+    showCount.addEventListener("change",()=>{
+      state.showCount = showCount.checked;
+      saveLocalSettings(eventId);
+      saveReportSettings(false);
+      renderReport();
+    });
+
+    showAudience.addEventListener("change",()=>{
+      state.showAudience = showAudience.checked;
+      saveLocalSettings(eventId);
+      saveReportSettings(false);
+      renderReport();
+    });
+
+    showDetails.addEventListener("change",()=>{
+      state.showDetails = showDetails.checked;
+      saveLocalSettings(eventId);
+      saveReportSettings(false);
+      renderReport();
+    });
+
+    showText.addEventListener("change",()=>{
+      state.showText = showText.checked;
+      saveLocalSettings(eventId);
+      saveReportSettings(false);
+      renderReport();
+    });
+
+    document.getElementById("freeNoteTitle").value = state.freeNoteTitle || "";
+    document.getElementById("freeNoteText").value = state.freeNoteText || "";
+
+    renderNoteList(eventId);
+  }
+
+  async function loadResults(eventId){
+    try{
+      const eventResult = await sb
+        .from("evaluation_events")
+        .select("*")
+        .eq("id",eventId)
+        .single();
+
+      if(eventResult.error) throw eventResult.error;
+      eventData = eventResult.data;
+
+      const questionsResult = await sb
+        .from("evaluation_questions")
+        .select("*")
+        .eq("event_id",eventId)
+        .order("sort_order",{ascending:true});
+
+      if(questionsResult.error) throw questionsResult.error;
+      questions = questionsResult.data || [];
+
+      const submissionsResult = await sb
+        .from("evaluation_submissions")
+        .select("id,event_id,submitted_at")
+        .eq("event_id",eventId)
+        .order("submitted_at",{ascending:true});
+
+      if(submissionsResult.error) throw submissionsResult.error;
+      submissions = submissionsResult.data || [];
+
+      const ids = submissions.map(s=>s.id);
+
+      if(ids.length){
+        const answersResult = await sb
+          .from("evaluation_answers")
+          .select("id,submission_id,question_id,answer_value,created_at")
+          .in("submission_id",ids);
+
+        if(answersResult.error) throw answersResult.error;
+        answers = answersResult.data || [];
+      }else{
+        answers = [];
+      }
+
+      renderReport();
+    }catch(error){
+      console.error("Load results error:",error);
+      renderError("تعذر تحميل نتائج التقييم.");
+    }
+  }
+
+  function getQuantitativeQuestions(){
+    return questions.filter(q=>!["text","short_text"].includes(q.question_type));
+  }
+
+  function getTextQuestions(){
+    return questions.filter(q=>["text","short_text"].includes(q.question_type));
+  }
+
+  function normalizeScoreMap(raw){
+    if(!raw) return null;
+    if(typeof raw === "string"){
+      try{return JSON.parse(raw);}catch(_){return null;}
+    }
+    return typeof raw === "object" ? raw : null;
+  }
+
+  function scoreFromMap(q,value){
+    const map = normalizeScoreMap(q.score_map);
+    if(!map || value === null || value === undefined || value === "") return null;
+    const key = String(value);
+    if(!(key in map)) return null;
+    const score = Number(map[key]);
+    return Number.isFinite(score) ? Math.max(0,Math.min(100,score)) : null;
+  }
+
+  function getQuestionMetric(q){
+    const qAnswers = answers.filter(a=>a.question_id === q.id);
+
+    // V2: أي بند له score_map يُحسب فقط من خريطة الدرجات المحفوظة معه.
+    const scoreMap = normalizeScoreMap(q.score_map);
+    if(scoreMap && q.question_type !== "multi_choice"){
+      const scores = qAnswers
+        .map(a=>scoreFromMap(q,unwrapValue(a.answer_value)))
+        .filter(v=>v !== null);
+
+      if(!scores.length){
+        return {percent:null,label:"لا توجد بيانات",detail:"—",scored:true,answered:0};
+      }
+
+      const pct = scores.reduce((a,b)=>a+b,0)/scores.length;
+
+      if(["scale","stars"].includes(q.question_type)){
+        const vals = qAnswers
+          .map(a=>Number(unwrapValue(a.answer_value)))
+          .filter(v=>Number.isFinite(v) && v>=1 && v<=5);
+        const avg = vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+        return {
+          percent:pct,
+          label:"درجة البند",
+          detail:avg === null ? "محسوبة وفق خريطة الدرجات" : `${avg.toFixed(2)} من 5`,
+          scored:true,
+          answered:scores.length
+        };
+      }
+
+      return {
+        percent:pct,
+        label:"درجة البند",
+        detail:"محسوبة وفق خريطة الدرجات المعتمدة",
+        scored:true,
+        answered:scores.length
+      };
+    }
+
+    // توافق مع التقييمات القديمة: المقياس 1–5 فقط قابل للتحويل إلى نسبة.
+    if(["stars","scale"].includes(q.question_type)){
+      const vals = qAnswers
+        .map(a=>Number(unwrapValue(a.answer_value)))
+        .filter(v=>Number.isFinite(v) && v>=1 && v<=5);
+
+      if(!vals.length){
+        return {percent:null,label:"لا توجد بيانات",detail:"—",scored:true,answered:0};
+      }
+
+      const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
+      const pct = avg/5*100;
+
+      return {
+        percent:pct,
+        label:"متوسط البند",
+        detail:`${avg.toFixed(2)} من 5`,
+        scored:true,
+        answered:vals.length
+      };
+    }
+
+    // أسئلة الاختيار القديمة بلا score_map لا تدخل في الدرجة الكلية.
+    if(["single_choice","dropdown","yes_no"].includes(q.question_type)){
+      const counts = {};
+      let answered = 0;
+
+      qAnswers.forEach(a=>{
+        const v = unwrapValue(a.answer_value);
+        if(v !== "" && v !== null && v !== undefined){
+          answered++;
+          const key = String(v);
+          counts[key] = (counts[key] || 0) + 1;
+        }
+      });
+
+      if(!answered){
+        return {percent:null,label:"لا توجد بيانات",detail:"—",scored:false,answered:0};
+      }
+
+      const top = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+      return {
+        percent:null,
+        label:"أعلى اختيار",
+        detail:`${top[0]} · ${(top[1]/answered*100).toFixed(1)}%`,
+        scored:false,
+        answered
+      };
+    }
+
+    if(q.question_type === "multi_choice"){
+      const counts = {};
+      let answered = 0;
+
+      qAnswers.forEach(a=>{
+        const v = unwrapValue(a.answer_value);
+        if(Array.isArray(v) && v.length){
+          answered++;
+          v.forEach(item=>{
+            const key = String(item);
+            counts[key] = (counts[key] || 0) + 1;
+          });
+        }
+      });
+
+      if(!answered || !Object.keys(counts).length){
+        return {percent:null,label:"لا توجد بيانات",detail:"—",scored:false,answered:0};
+      }
+
+      const top = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+      return {
+        percent:null,
+        label:"أعلى اختيار",
+        detail:`${top[0]} · ${(top[1]/answered*100).toFixed(1)}%`,
+        scored:false,
+        answered
+      };
+    }
+
+    return {percent:null,label:"غير محسوب",detail:"—",scored:false,answered:0};
+  }
+
+  function getDomainName(q){
+    return String(q.measurement_dimension || q.category || "").trim();
+  }
+
+  function buildDomainScores(rows){
+    const groups = new Map();
+
+    rows.forEach(row=>{
+      if(row.metric.percent === null || !row.metric.scored) return;
+      const domain = getDomainName(row.q);
+      if(!domain || domain === "بيانات المجيب" || domain === "التغذية الراجعة المفتوحة") return;
+
+      if(!groups.has(domain)) groups.set(domain,[]);
+      groups.get(domain).push(row.metric.percent);
+    });
+
+    return [...groups.entries()]
+      .map(([name,values])=>({
+        name,
+        score:values.reduce((a,b)=>a+b,0)/values.length,
+        items:values.length
+      }))
+      .sort((a,b)=>b.score-a.score);
+  }
+
+  function getOverallScore(rows){
+    const scored = rows.filter(r=>r.metric.percent !== null && r.metric.scored);
+    if(!scored.length) return null;
+    return scored.reduce((sum,r)=>sum+r.metric.percent,0)/scored.length;
+  }
+
+  function scoreReading(score){
+    if(score === null || !Number.isFinite(score)) return "لا توجد بيانات كافية";
+    if(score >= 90) return "مستوى مرتفع جدًا";
+    if(score >= 80) return "مستوى مرتفع";
+    if(score >= 70) return "مستوى جيد";
+    if(score >= 60) return "مستوى متوسط";
+    return "أولوية للتحسين";
+  }
+
+  function renderReport(){
+    if(!eventData) return;
+
+    const report = document.getElementById("report");
+    const quantitative = getQuantitativeQuestions();
+    const textQuestions = getTextQuestions();
+
+    const visibleQuantitative = quantitative.filter(q=>!state.hiddenQuestions.has(q.id));
+    const metricRows = visibleQuantitative.map((q,index)=>({
+      q,
+      index,
+      metric:getQuestionMetric(q)
+    }));
+
+    const scoredRows = metricRows.filter(r=>r.metric.percent !== null && r.metric.scored);
+    const overallScore = getOverallScore(metricRows);
+    const domainScores = buildDomainScores(metricRows);
+    const strongestDomain = domainScores.length ? domainScores[0] : null;
+    const priorityDomain = domainScores.length ? domainScores[domainScores.length-1] : null;
+
+    report.innerHTML = `
+      <section class="report-head">
+        <img class="school-header" src="school-header.jpg" alt="الترويسة الرسمية للمدرسة">
+
+        <div class="committee">لجنة التقييم الذاتي</div>
+        <h2>تقرير نتائج تقييم فعالية</h2>
+        <h3 class="event-title">${escapeHtml(eventData.title)}</h3>
+
+        <div class="event-meta">
+          ${state.showAudience ? `<span class="chip">الفئة المستهدفة: ${escapeHtml(eventData.target_audience || "غير محددة")}</span>` : ""}
+          ${state.showCount ? `<span class="chip">عدد الاستجابات: ${submissions.length}</span>` : ""}
+          <span class="chip">${statusArabic(eventData.status)}</span>
+        </div>
+      </section>
+
+      <div class="method-note">
+        ${
+          state.showCount
+            ? `تعكس النتائج ${submissions.length} استجابة محفوظة في النظام وقت إصدار التقرير.`
+            : `تعكس النتائج الاستجابات المحفوظة في النظام وقت إصدار التقرير.`
+        }
+        تخصيص النسخة الرسمية لا يغيّر الاستجابات الأصلية أو قيمها.
+        وتُحسب الدرجات من خرائط القياس المحفوظة مع بنود V2، بينما لا تدخل أسئلة الاختيار غير الموزونة في النتيجة الكلية.
+      </div>
+
+      <section class="dashboard">
+        <div class="dashboard-title">
+          <h3>ملخص لوحة النتائج</h3>
+          <span>قراءة مباشرة للبيانات المسجلة</span>
+        </div>
+
+        <div class="kpis">
+          ${state.showCount ? `
+            <article class="kpi">
+              <span>إجمالي الاستجابات</span>
+              <strong>${submissions.length}</strong>
+              <small>استجابة محفوظة</small>
+            </article>` : ""}
+
+          <article class="kpi">
+            <span>إجمالي بنود التقييم</span>
+            <strong>${questions.length}</strong>
+            <small>بندًا</small>
+          </article>
+
+          <article class="kpi">
+            <span>البنود الكمية</span>
+            <strong>${quantitative.length}</strong>
+            <small>قابلة للعرض البياني</small>
+          </article>
+
+          <article class="kpi">
+            <span>النتيجة الكلية للتقييم</span>
+            <strong>${overallScore === null ? "—" : overallScore.toFixed(1)+"%"}</strong>
+            <small>${overallScore === null ? "لا توجد بنود قابلة للتسجيل" : scoreReading(overallScore)}</small>
+          </article>
+        </div>
+      </section>
+
+      ${domainScores.length ? `
+        <section class="section">
+          <h3 class="section-title">مؤشرات محاور التقييم</h3>
+          <div class="domain-grid">
+            ${domainScores.map(d=>`
+              <article class="domain-card">
+                <div class="domain-card-top">
+                  <span class="domain-name">${escapeHtml(d.name)}</span>
+                  <span class="domain-score">${d.score.toFixed(1)}%</span>
+                </div>
+                <div class="domain-track">
+                  <div class="domain-fill" style="width:${Math.max(0,Math.min(100,d.score)).toFixed(1)}%"></div>
+                </div>
+                <div class="domain-meta">${scoreReading(d.score)} · ${d.items} ${d.items===1 ? "بند" : "بنود"}</div>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+
+        <section class="section">
+          <h3 class="section-title">قراءة موجزة للنتائج</h3>
+          <div class="insight-grid">
+            <article class="insight-card">
+              <strong>أعلى محور في الاستجابات</strong>
+              <p>${escapeHtml(strongestDomain.name)} — ${strongestDomain.score.toFixed(1)}%. هذه قراءة وصفية مباشرة للاستجابات المسجلة.</p>
+            </article>
+            <article class="insight-card">
+              <strong>المحور الأقل نسبيًا</strong>
+              <p>${escapeHtml(priorityDomain.name)} — ${priorityDomain.score.toFixed(1)}%. يمكن استخدامه كأولوية للمراجعة عند التخطيط للتحسين.</p>
+            </article>
+          </div>
+        </section>
+      ` : ""}
+
+      <section class="section">
+        <h3 class="section-title">جدول نتائج بنود التقييم</h3>
+
+        <div class="results-table-wrap">
+          <table class="results-table">
+            <thead>
+              <tr>
+                <th class="col-number">م</th>
+                <th>البند</th>
+                <th class="col-percent">الدرجة</th>
+                <th class="col-reading">القراءة</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                metricRows.length
+                  ? metricRows.map((row,i)=>`
+                    <tr>
+                      <td class="col-number">${i+1}</td>
+                      <td>${escapeHtml(row.q.question_text)}</td>
+                      <td class="col-percent">
+                        <span class="percent-box">
+                          ${row.metric.percent === null ? "—" : row.metric.percent.toFixed(1)+"%"}
+                        </span>
+                      </td>
+                      <td class="col-reading">
+                        <div class="reading">
+                          <strong>${escapeHtml(row.metric.label)}</strong><br>
+                          ${escapeHtml(row.metric.detail)}
+                        </div>
+                      </td>
+                    </tr>
+                  `).join("")
+                  : `<tr><td colspan="4" class="empty">لا توجد بنود كمية ظاهرة في التقرير.</td></tr>`
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-title">
+            <strong>الرسم البياني الداعم للنتائج</strong>
+            <span>يعرض البنود التي لها درجة قابلة للحساب فقط</span>
+          </div>
+
+          <div class="summary-chart">
+            ${
+              metricRows.filter(r=>r.metric.percent !== null).length
+                ? metricRows
+                    .filter(r=>r.metric.percent !== null)
+                    .map((row,i)=>`
+                      <div class="summary-bar" title="${escapeHtml(row.q.question_text)}">
+                        <div class="summary-label">${i+1}. ${escapeHtml(row.q.question_text)}</div>
+                        <div class="summary-track">
+                          <div class="summary-fill" style="width:${Math.max(0,Math.min(100,row.metric.percent)).toFixed(1)}%"></div>
+                        </div>
+                        <div class="summary-value">${row.metric.percent.toFixed(1)}%</div>
+                      </div>
+                    `).join("")
+                : `<div class="empty">لا توجد بيانات كمية كافية للرسم البياني.</div>`
+            }
+          </div>
+        </div>
+      </section>
+
+      ${state.showDetails ? `
+        <section class="section">
+          <h3 class="section-title">التحليل التفصيلي للبنود</h3>
+          ${
+            quantitative.length
+              ? quantitative.map((q,i)=>renderQuantitativeQuestion(q,i)).join("")
+              : `<div class="empty">لا توجد بنود كمية في هذا التقييم.</div>`
+          }
+        </section>
+      ` : ""}
+
+      ${state.showText && textQuestions.length ? `
+        <section class="section">
+          <h3 class="section-title">الاستجابات النصية</h3>
+          ${textQuestions.map(renderTextQuestion).join("")}
+        </section>
+      ` : ""}
+
+      ${state.adminNotes.length ? `
+        <section class="section">
+          <h3 class="section-title">إضافات إدارية</h3>
+          ${state.adminNotes.map(n=>`
+            <div class="admin-note">
+              <small>${escapeHtml(n.type)} — إضافة إدارية</small>
+              <strong>${escapeHtml(n.title)}</strong>
+              <div>${escapeHtml(n.text)}</div>
+            </div>
+          `).join("")}
+        </section>
+      ` : ""}
+
+      ${state.freeNoteText ? `
+        <section class="section">
+          <div class="free-note">
+            <strong>${escapeHtml(state.freeNoteTitle || "ملاحظة")}</strong>
+            ${escapeHtml(state.freeNoteText)}
+          </div>
+        </section>
+      ` : ""}
+
+      <footer class="report-footer">
+        <div>
+          <span>إعداد</span>
+          <strong>فاتن صلاح</strong>
+          <small>اختصاصي مصادر تعلم</small>
+        </div>
+
+        <div>
+          <span>المديرة المساعدة</span>
+          <strong>خلود الكعبي</strong>
+        </div>
+
+        <div>
+          <span>مديرة المدرسة</span>
+          <strong>أحلام السويدي</strong>
+        </div>
+      </footer>
+    `;
+  }
+
+  function renderQuantitativeQuestion(q,index){
+    const qAnswers = answers.filter(a=>a.question_id === q.id);
+    const hidden = state.hiddenQuestions.has(q.id);
+
+    let body = "";
+
+    if(["single_choice","dropdown","yes_no"].includes(q.question_type)){
+      body = renderChoiceDistribution(q,qAnswers,false);
+    }else if(q.question_type === "multi_choice"){
+      body = renderChoiceDistribution(q,qAnswers,true);
+    }else if(["stars","scale"].includes(q.question_type)){
+      body = renderScaleDistribution(q,qAnswers);
+    }else{
+      body = `<div class="empty">نوع السؤال غير مدعوم في التحليل الحالي.</div>`;
+    }
+
+    return `
+      <article class="question-card ${hidden ? "report-hidden" : ""}" data-qid="${q.id}">
+        <div class="question-top">
+          <div class="question-title">${index+1}. ${escapeHtml(q.question_text)}</div>
+
+          <div class="admin-tools admin-only">
+            <button class="mini-btn ${hidden ? "active" : ""}" type="button"
+              onclick="toggleQuestion('${q.id}')">
+              ${hidden ? "إعادة للتقرير" : "استبعاد من التقرير"}
+            </button>
+          </div>
+        </div>
+
+        ${body}
+      </article>
+    `;
+  }
+
+  function renderChoiceDistribution(q,qAnswers,isMulti){
+    const options = Array.isArray(q.options) ? q.options : [];
+    const counts = {};
+    options.forEach(o=>counts[String(o)] = 0);
+
+    let answered = 0;
+
+    qAnswers.forEach(a=>{
+      const value = unwrapValue(a.answer_value);
+
+      if(isMulti){
+        if(Array.isArray(value) && value.length){
+          answered++;
+          value.forEach(v=>{
+            const key = String(v);
+            counts[key] = (counts[key] || 0) + 1;
+          });
+        }
+      }else{
+        if(value !== "" && value !== null && value !== undefined){
+          answered++;
+          const key = String(value);
+          counts[key] = (counts[key] || 0) + 1;
+        }
+      }
+    });
+
+    const allOptions = [...options.map(String)];
+
+    Object.keys(counts).forEach(k=>{
+      if(!allOptions.includes(k)) allOptions.push(k);
+    });
+
+    return `
+      <div class="metric-line">
+        <div class="metric">المجيبين على البند: <strong>${answered}</strong></div>
+        ${isMulti ? `<div class="metric">يسمح بأكثر من اختيار</div>` : ""}
+      </div>
+
+      <table class="dist-table">
+        <tbody>
+          ${allOptions.map(opt=>{
+            const count = counts[opt] || 0;
+            const pct = answered ? count/answered*100 : 0;
+
+            return `
+              <tr>
+                <td class="dist-label">${escapeHtml(opt)}</td>
+                <td class="dist-bar-cell">
+                  <div class="dist-track">
+                    <div class="dist-fill" style="width:${Math.min(pct,100).toFixed(1)}%"></div>
+                  </div>
+                </td>
+                <td class="dist-value">${count} · ${pct.toFixed(1)}%</td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function renderScaleDistribution(q,qAnswers){
+    const values = qAnswers
+      .map(a=>Number(unwrapValue(a.answer_value)))
+      .filter(v=>Number.isFinite(v) && v>=1 && v<=5);
+
+    const counts = {1:0,2:0,3:0,4:0,5:0};
+    values.forEach(v=>counts[v]++);
+
+    const avg = values.length
+      ? values.reduce((a,b)=>a+b,0)/values.length
+      : 0;
+
+    return `
+      <div class="metric-line">
+        <div class="metric">المجيبين على البند: <strong>${values.length}</strong></div>
+        <div class="metric">المتوسط: <strong>${values.length ? avg.toFixed(2) : "—"} من 5</strong></div>
+      </div>
+
+      <table class="dist-table">
+        <tbody>
+          ${[5,4,3,2,1].map(v=>{
+            const count = counts[v];
+            const pct = values.length ? count/values.length*100 : 0;
+
+            return `
+              <tr>
+                <td class="dist-label">${v} من 5</td>
+                <td class="dist-bar-cell">
+                  <div class="dist-track">
+                    <div class="dist-fill" style="width:${pct.toFixed(1)}%"></div>
+                  </div>
+                </td>
+                <td class="dist-value">${count} · ${pct.toFixed(1)}%</td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function renderTextQuestion(q){
+    const qAnswers = answers.filter(a=>a.question_id === q.id);
+    const hidden = state.hiddenQuestions.has(q.id);
+
+    const meaningful = qAnswers.filter(a=>{
+      const v = unwrapValue(a.answer_value);
+      return String(v ?? "").trim() !== "";
+    });
+
+    return `
+      <article class="question-card ${hidden ? "report-hidden" : ""}" data-qid="${q.id}">
+        <div class="question-top">
+          <div class="question-title">${escapeHtml(q.question_text)}</div>
+
+          <div class="admin-tools admin-only">
+            <button class="mini-btn ${hidden ? "active" : ""}" type="button"
+              onclick="toggleQuestion('${q.id}')">
+              ${hidden ? "إعادة البند للتقرير" : "استبعاد البند من التقرير"}
+            </button>
+          </div>
+        </div>
+
+        ${
+          meaningful.length
+            ? meaningful.map(a=>{
+                const excluded = state.hiddenAnswers.has(a.id);
+
+                return `
+                  <div class="comment ${excluded ? "excluded" : ""}">
+                    ${escapeHtml(String(unwrapValue(a.answer_value)))}
+
+                    <div class="comment-tools admin-only">
+                      <button type="button" onclick="toggleAnswer('${a.id}')">
+                        ${excluded ? "إعادة التعليق للتقرير" : "استبعاد التعليق من التقرير"}
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join("")
+            : `<div class="empty">لا توجد استجابات نصية لهذا البند.</div>`
+        }
+      </article>
+    `;
+  }
+
+  function unwrapValue(answerValue){
+    if(answerValue && typeof answerValue === "object" && "value" in answerValue){
+      return answerValue.value;
+    }
+    return answerValue;
+  }
+
+  function toggleQuestion(id){
+    if(state.hiddenQuestions.has(id)) state.hiddenQuestions.delete(id);
+    else state.hiddenQuestions.add(id);
+
+    saveLocalSettings(eventData.id);
+    saveReportSettings(false);
+    renderReport();
+  }
+
+  function toggleAnswer(id){
+    if(state.hiddenAnswers.has(id)) state.hiddenAnswers.delete(id);
+    else state.hiddenAnswers.add(id);
+
+    saveLocalSettings(eventData.id);
+    saveReportSettings(false);
+    renderReport();
+  }
+
+  function setMode(mode){
+    state.mode = mode;
+
+    document.body.classList.toggle("report-mode",mode==="report");
+    document.getElementById("fullModeBtn")?.classList.toggle("active",mode==="full");
+    document.getElementById("reportModeBtn")?.classList.toggle("active",mode==="report");
+
+    if(mode==="report"){
+      window.scrollTo({top:0,behavior:"smooth"});
+    }
+  }
+
+  function addAdminNote(){
+    const type = document.getElementById("noteType").value;
+    const title = document.getElementById("noteTitle").value.trim();
+    const text = document.getElementById("noteText").value.trim();
+
+    if(!title || !text){
+      alert("اكتبي عنوان الإضافة ونصها أولًا.");
+      return;
+    }
+
+    state.adminNotes.push({
+      id:crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+      type,
+      title,
+      text
+    });
+
+    document.getElementById("noteTitle").value = "";
+    document.getElementById("noteText").value = "";
+
+    saveLocalSettings(eventData.id);
+    saveReportSettings(false);
+    renderNoteList(eventData.id);
+    renderReport();
+  }
+
+  function removeAdminNote(id){
+    state.adminNotes = state.adminNotes.filter(n=>n.id!==id);
+
+    saveLocalSettings(eventData.id);
+    saveReportSettings(false);
+    renderNoteList(eventData.id);
+    renderReport();
+  }
+
+  function renderNoteList(eventId){
+    const list = document.getElementById("noteList");
+    if(!list) return;
+
+    list.innerHTML = state.adminNotes.map(n=>`
+      <div class="note-chip">
+        <strong>${escapeHtml(n.type)}: ${escapeHtml(n.title)}</strong>
+        ${escapeHtml(n.text)}
+        <button type="button" onclick="removeAdminNote('${n.id}')">حذف الإضافة</button>
+      </div>
+    `).join("");
+  }
+
+  function saveFreeNote(){
+    state.freeNoteTitle = document.getElementById("freeNoteTitle").value.trim();
+    state.freeNoteText = document.getElementById("freeNoteText").value.trim();
+
+    saveLocalSettings(eventData.id);
+    saveReportSettings(true);
+    renderReport();
+  }
+
+
+  async function loadReportSettings(eventId){
+    try{
+      const result = await sb
+        .from("evaluation_report_settings")
+        .select("*")
+        .eq("event_id",eventId)
+        .maybeSingle();
+
+      if(result.error) throw result.error;
+
+      if(result.data){
+        const saved = result.data;
+        state.showCount = saved.show_response_count !== false;
+        state.showAudience = saved.show_target_audience !== false;
+        state.showDetails = saved.show_details !== false;
+        state.showText = saved.show_text_answers !== false;
+        state.hiddenQuestions = new Set(Array.isArray(saved.hidden_question_ids) ? saved.hidden_question_ids : []);
+        state.hiddenAnswers = new Set(Array.isArray(saved.hidden_answer_ids) ? saved.hidden_answer_ids : []);
+        state.adminNotes = Array.isArray(saved.admin_notes) ? saved.admin_notes : [];
+        state.freeNoteTitle = saved.free_note_title || "";
+        state.freeNoteText = saved.free_note_text || "";
+        saveLocalSettings(eventId);
+      }else{
+        // انتقال سلس: لو كانت هناك إعدادات قديمة محفوظة محليًا نستخدمها أول مرة.
+        loadLocalSettings(eventId);
+      }
+    }catch(error){
+      console.warn("Could not load report settings from Supabase:",error);
+      loadLocalSettings(eventId);
+    }
+  }
+
+  async function saveReportSettings(showMessage=false){
+    if(!eventData?.id) return false;
+
+    const btn = document.getElementById("saveReportBtn");
+    const oldText = btn?.textContent;
+
+    if(showMessage && btn){
+      btn.disabled = true;
+      btn.textContent = "جاري الحفظ...";
+    }
+
+    try{
+      const {data:{user}} = await sb.auth.getUser();
+
+      const payload = {
+        event_id:eventData.id,
+        show_response_count:state.showCount,
+        show_target_audience:state.showAudience,
+        show_details:state.showDetails,
+        show_text_answers:state.showText,
+        hidden_question_ids:[...state.hiddenQuestions],
+        hidden_answer_ids:[...state.hiddenAnswers],
+        admin_notes:state.adminNotes,
+        free_note_title:state.freeNoteTitle || null,
+        free_note_text:state.freeNoteText || null,
+        created_by:user?.id || null,
+        updated_at:new Date().toISOString()
+      };
+
+      const result = await sb
+        .from("evaluation_report_settings")
+        .upsert(payload,{onConflict:"event_id"});
+
+      if(result.error) throw result.error;
+
+      saveLocalSettings(eventData.id);
+
+      if(showMessage){
+        alert("تم حفظ واعتماد إعدادات التقرير بنجاح.");
+      }
+      return true;
+    }catch(error){
+      console.error("Save report settings error:",error);
+      if(showMessage){
+        alert("تعذر حفظ إعدادات التقرير في قاعدة البيانات.");
+      }
+      return false;
+    }finally{
+      if(showMessage && btn){
+        btn.disabled = false;
+        btn.textContent = oldText || "حفظ واعتماد التقرير";
+      }
+    }
+  }
+
+  function saveLocalSettings(eventId){
+    const payload = {
+      showCount:state.showCount,
+      showAudience:state.showAudience,
+      showDetails:state.showDetails,
+      showText:state.showText,
+      hiddenQuestions:[...state.hiddenQuestions],
+      hiddenAnswers:[...state.hiddenAnswers],
+      adminNotes:state.adminNotes,
+      freeNoteTitle:state.freeNoteTitle,
+      freeNoteText:state.freeNoteText
+    };
+
+    localStorage.setItem(
+      `evaluation_report_${eventId}`,
+      JSON.stringify(payload)
+    );
+  }
+
+  function loadLocalSettings(eventId){
+    try{
+      const raw = localStorage.getItem(`evaluation_report_${eventId}`);
+      if(!raw) return;
+
+      const saved = JSON.parse(raw);
+
+      state.showCount = saved.showCount !== false;
+      state.showAudience = saved.showAudience !== false;
+      state.showDetails = saved.showDetails !== false;
+      state.showText = saved.showText !== false;
+      state.hiddenQuestions = new Set(saved.hiddenQuestions || []);
+      state.hiddenAnswers = new Set(saved.hiddenAnswers || []);
+      state.adminNotes = Array.isArray(saved.adminNotes) ? saved.adminNotes : [];
+      state.freeNoteTitle = saved.freeNoteTitle || "";
+      state.freeNoteText = saved.freeNoteText || "";
+    }catch(error){
+      console.warn("Could not load report settings",error);
+    }
+  }
+
+  function statusArabic(status){
+    return status==="published"
+      ? "منشور"
+      : status==="closed"
+        ? "مغلق"
+        : "مسودة";
+  }
+
+  function renderError(message){
+    document.getElementById("report").innerHTML =
+      `<div class="error">${escapeHtml(message)}</div>`;
+  }
+
+  function escapeHtml(value){
+    return String(value ?? "")
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+</script>
+</body>
+</html>
