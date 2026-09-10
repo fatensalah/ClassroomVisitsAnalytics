@@ -1,0 +1,1328 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>نتائج حصر الاحتياجات التدريبية</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+
+  <style>
+    *{box-sizing:border-box}
+    :root{
+      --primary:#0e4b4d;--primary-dark:#08393b;--primary-soft:#edf6f4;
+      --gold:#b9964c;--gold-soft:#fbf7ed;--bg:#f2f6f5;--card:#fff;
+      --text:#173f42;--muted:#6c7d7f;--border:#d8e3e1;--danger:#a94442;
+      --success:#287348;--warn:#8a6b23;--shadow:0 14px 38px rgba(10,57,59,.08)
+    }
+
+    body{
+      margin:0;font-family:Tahoma,Arial,sans-serif;color:var(--text);
+      background:
+        radial-gradient(circle at 12% 8%,rgba(185,150,76,.10),transparent 25%),
+        radial-gradient(circle at 88% 15%,rgba(14,75,77,.08),transparent 28%),
+        linear-gradient(135deg,#eef5f3,#fbfaf6 50%,#eef4f2);
+      min-height:100vh
+    }
+
+    button,select,input{font:inherit}
+    button{cursor:pointer}
+    .hidden{display:none!important}
+
+    .page{width:min(1320px,calc(100% - 28px));margin:22px auto 50px}
+
+    .official-header{
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:18px;
+      box-shadow:var(--shadow);
+      overflow:hidden;
+      margin-bottom:14px;
+    }
+    .official-header img{
+      width:100%;
+      display:block;
+      max-height:150px;
+      object-fit:contain;
+      background:#fff;
+    }
+
+    .topbar{
+      background:#fff;border:1px solid rgba(14,75,77,.15);border-radius:20px;
+      box-shadow:var(--shadow);padding:18px 20px;display:flex;align-items:center;
+      justify-content:space-between;gap:16px;position:relative;overflow:hidden
+    }
+    .topbar::before{
+      content:"";position:absolute;top:0;right:0;left:0;height:4px;
+      background:linear-gradient(90deg,var(--primary-dark),var(--gold),var(--primary))
+    }
+    .topbar h1{margin:0 0 4px;font-size:1.5rem;color:var(--primary-dark)}
+    .topbar p{margin:0;color:var(--muted);font-size:.82rem;line-height:1.7}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}
+    .btn{border:0;border-radius:10px;padding:10px 14px;font-weight:700}
+    .btn-primary{background:var(--primary);color:#fff}
+    .btn-soft{background:#fff;border:1px solid var(--border);color:var(--primary)}
+    .btn-gold{background:var(--gold-soft);border:1px solid #e8d9b0;color:#725b2c}
+
+    .stats{
+      display:grid;grid-template-columns:repeat(4,1fr);
+      gap:12px;margin:16px 0
+    }
+    .stat{
+      background:#fff;border:1px solid var(--border);border-radius:15px;
+      padding:16px;box-shadow:0 7px 20px rgba(10,57,59,.04)
+    }
+    .stat span{display:block;color:var(--muted);font-size:.76rem;margin-bottom:8px}
+    .stat strong{font-size:1.6rem;color:var(--primary-dark)}
+
+    .panel{
+      background:#fff;border:1px solid var(--border);border-radius:18px;
+      box-shadow:var(--shadow);padding:18px;margin-top:14px
+    }
+    .panel-head{
+      display:flex;justify-content:space-between;align-items:center;
+      gap:12px;flex-wrap:wrap;margin-bottom:14px
+    }
+    .panel-head h2{margin:0;font-size:1.05rem;color:var(--primary-dark)}
+    .panel-head p{margin:4px 0 0;color:var(--muted);font-size:.76rem}
+
+    .filters{
+      display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+      gap:10px;margin-bottom:14px
+    }
+    .field label{display:block;font-size:.72rem;font-weight:700;margin-bottom:5px;color:var(--muted)}
+    .field select,.field input{
+      width:100%;border:1px solid var(--border);border-radius:9px;
+      padding:9px 10px;background:#fff;color:var(--text);outline:none
+    }
+
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+    .tab{
+      border:1px solid var(--border);background:#fff;color:var(--primary);
+      border-radius:999px;padding:8px 12px;font-weight:700;font-size:.75rem
+    }
+    .tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+
+    .table-wrap{overflow:auto;border:1px solid var(--border);border-radius:12px}
+    table{width:100%;border-collapse:collapse;min-width:900px;background:#fff}
+    th,td{padding:11px 10px;border-bottom:1px solid #edf1f0;text-align:right;vertical-align:top}
+    th{background:#f7faf9;color:var(--primary-dark);font-size:.73rem;white-space:nowrap}
+    td{font-size:.74rem;line-height:1.6}
+    tbody tr:hover{background:#fbfdfc}
+
+    .need-name{font-weight:700;color:var(--text);min-width:260px}
+    .badge{
+      display:inline-flex;align-items:center;padding:4px 7px;border-radius:999px;
+      font-size:.66rem;font-weight:700;background:var(--primary-soft);color:var(--primary)
+    }
+    .badge.high{background:#fff1ee;color:#9a483d}
+    .badge.mid{background:#fbf4df;color:#7b6124}
+    .badge.low{background:#edf7ef;color:#2d6a45}
+
+    .priority-bar{
+      width:100%;height:8px;background:#edf2f1;border-radius:999px;
+      overflow:hidden;margin-top:5px;min-width:90px
+    }
+    .priority-fill{height:100%;background:var(--primary);border-radius:999px}
+
+    .cards{
+      display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px
+    }
+    .mini-card{
+      border:1px solid var(--border);border-radius:13px;padding:13px;background:#fff
+    }
+    .mini-card h3{margin:0 0 7px;font-size:.82rem;color:var(--primary-dark)}
+    .mini-card p{margin:0;color:var(--muted);font-size:.72rem;line-height:1.7}
+    .mini-card strong{font-size:1.25rem;color:var(--primary-dark)}
+
+    .person{
+      border:1px solid var(--border);border-radius:11px;padding:11px;margin-bottom:8px;background:#fbfdfc
+    }
+    .person h4{margin:0 0 5px;font-size:.8rem;color:var(--primary-dark)}
+    .person p{margin:0;color:var(--muted);font-size:.7rem;line-height:1.6}
+
+    .list{display:grid;gap:8px}
+    .list-row{
+      display:flex;justify-content:space-between;gap:12px;align-items:flex-start;
+      border:1px solid var(--border);border-radius:10px;padding:10px 12px
+    }
+    .list-row .label{font-size:.76rem;line-height:1.6}
+    .list-row .value{font-weight:700;color:var(--primary-dark);white-space:nowrap}
+
+    .empty,.loading,.error{
+      text-align:center;padding:30px 16px;color:var(--muted);
+      border:1px dashed var(--border);border-radius:12px;background:#fbfdfc;line-height:1.8
+    }
+    .error{color:var(--danger);background:#fffafa}
+
+    .note{
+      padding:10px 12px;border-radius:10px;background:var(--primary-soft);
+      border:1px solid #d7e8e5;color:var(--primary-dark);font-size:.72rem;line-height:1.7
+    }
+
+    .explain-grid{
+      display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px
+    }
+    .explain-card{
+      border:1px solid var(--border);border-radius:13px;padding:14px;background:#fbfdfc
+    }
+    .explain-card h3{
+      margin:0 0 7px;font-size:.8rem;color:var(--primary-dark)
+    }
+    .explain-card p{
+      margin:0;color:var(--muted);font-size:.72rem;line-height:1.8
+    }
+    .explain-card strong{
+      color:var(--primary-dark)
+    }
+    .summary-box{
+      border:1px solid #d7e8e5;border-radius:14px;background:var(--primary-soft);
+      padding:14px 16px;line-height:1.9;font-size:.78rem
+    }
+    .summary-box h3{
+      margin:0 0 7px;color:var(--primary-dark);font-size:.92rem
+    }
+    .summary-box ul{
+      margin:6px 0 0;padding-right:20px
+    }
+    .summary-box li{margin:4px 0}
+    .insight-grid{
+      display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:12px
+    }
+    .insight-card{
+      border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff
+    }
+    .insight-card span{
+      display:block;color:var(--muted);font-size:.66rem;margin-bottom:5px
+    }
+    .insight-card strong{
+      display:block;color:var(--primary-dark);font-size:.85rem;line-height:1.55
+    }
+    .compact-note{
+      margin-top:10px;color:var(--muted);font-size:.7rem;line-height:1.7
+    }
+    .internal-table table{min-width:760px}
+    .internal-table td,.internal-table th{padding:9px 8px}
+    .status-callout{
+      border-radius:12px;padding:11px 13px;margin-bottom:12px;
+      font-size:.75rem;line-height:1.8;font-weight:700
+    }
+    .status-callout.preliminary{
+      background:#fff8e8;border:1px solid #ead9a9;color:#725b2c
+    }
+    .status-callout.final{
+      background:#edf8f1;border:1px solid #cfe7d7;color:#287348
+    }
+    .metric-help{
+      display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px
+    }
+    .metric-help div{
+      border:1px solid var(--border);border-radius:10px;padding:9px;background:#fff;
+      font-size:.68rem;line-height:1.6;color:var(--muted)
+    }
+    .metric-help strong{display:block;color:var(--primary-dark);margin-bottom:3px}
+    .internal-only{}
+
+    .report-title{
+      text-align:center;
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:18px;
+      box-shadow:var(--shadow);
+      padding:20px 18px;
+      margin:14px 0;
+      position:relative;
+      overflow:hidden;
+    }
+    .report-title::before{
+      content:"";
+      position:absolute;
+      top:0;right:0;left:0;height:4px;
+      background:linear-gradient(90deg,var(--primary-dark),var(--gold),var(--primary));
+    }
+    .report-title h2{
+      margin:0 0 8px;
+      font-size:1.35rem;
+      color:var(--primary-dark);
+    }
+    .report-title p{
+      margin:0;
+      color:var(--muted);
+      font-size:.8rem;
+      line-height:1.7;
+    }
+
+    .official-footer{
+      margin-top:18px;
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:18px;
+      box-shadow:var(--shadow);
+      padding:20px 18px;
+    }
+    .official-footer h3{
+      text-align:center;
+      margin:0 0 16px;
+      color:var(--primary-dark);
+      font-size:.95rem;
+    }
+    .signatures{
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:14px;
+      text-align:center;
+    }
+    .signature{
+      border-top:1px solid #e7eceb;
+      padding-top:14px;
+      min-height:90px;
+    }
+    .signature .role{
+      color:var(--muted);
+      font-size:.7rem;
+      margin-bottom:6px;
+    }
+    .signature .name{
+      font-weight:700;
+      color:var(--primary-dark);
+      font-size:.86rem;
+    }
+    .signature .title{
+      margin-top:3px;
+      color:var(--text);
+      font-size:.7rem;
+    }
+
+    @media(max-width:950px){
+      .stats{grid-template-columns:repeat(2,1fr)}
+      .filters{grid-template-columns:repeat(2,1fr)}
+      .cards{grid-template-columns:1fr}
+      .explain-grid{grid-template-columns:1fr}
+      .metric-help{grid-template-columns:repeat(2,1fr)}
+      .insight-grid{grid-template-columns:repeat(2,1fr)}
+      .signatures{grid-template-columns:1fr}
+      .topbar{flex-direction:column;align-items:flex-start}
+    }
+    @media(max-width:560px){
+      .page{width:calc(100% - 14px);margin-top:8px}
+      .filters{grid-template-columns:1fr}
+      .stats{grid-template-columns:1fr 1fr}
+    }
+
+    @media print{
+      @page{size:A4 landscape;margin:8mm}
+
+      html,body{
+        background:#fff!important;
+        color:#111!important;
+        font-size:10px;
+      }
+
+      .page{
+        width:100%!important;
+        max-width:none!important;
+        margin:0!important;
+      }
+
+      .actions,
+      .filters,
+      .tabs,
+      .internal-only,
+      .panel-head p,
+      .topbar p{
+        display:none!important;
+      }
+
+      .official-header,
+      .report-title,
+      .topbar,
+      .stat,
+      .panel,
+      .official-footer{
+        box-shadow:none!important;
+      }
+
+      .official-header{
+        border:0!important;
+        margin:0 0 4mm!important;
+        padding:0!important;
+      }
+
+      .official-header img{
+        max-height:28mm!important;
+        width:100%!important;
+        object-fit:contain!important;
+      }
+
+      .report-title{
+        margin:0 0 3mm!important;
+        padding:4mm 5mm!important;
+        border-radius:10px!important;
+      }
+
+      .report-title h2{
+        font-size:18px!important;
+        margin:0 0 2mm!important;
+      }
+
+      .report-title p{
+        font-size:10px!important;
+      }
+
+      .topbar{
+        padding:3mm 4mm!important;
+        margin:0 0 3mm!important;
+        border-radius:10px!important;
+        min-height:auto!important;
+      }
+
+      .topbar::before{
+        height:2px!important;
+      }
+
+        .topbar h1{
+        font-size:14px!important;
+        margin:0!important;
+      }
+
+      .stats{
+        display:grid!important;
+        grid-template-columns:repeat(4,1fr)!important;
+        gap:2.5mm!important;
+        margin:0 0 3mm!important;
+        break-inside:avoid!important;
+        page-break-inside:avoid!important;
+      }
+
+      .stat{
+        padding:3mm!important;
+        border-radius:8px!important;
+        min-height:20mm!important;
+      }
+
+      .stat span{
+        font-size:9px!important;
+        margin-bottom:1.5mm!important;
+      }
+
+      .stat strong{
+        font-size:18px!important;
+      }
+
+      .panel{
+        padding:3.5mm!important;
+        margin:0 0 3mm!important;
+        border-radius:9px!important;
+        break-inside:auto!important;
+        page-break-inside:auto!important;
+      }
+
+      .panel-head{
+        margin-bottom:2mm!important;
+      }
+
+      .panel-head h2{
+        font-size:13px!important;
+      }
+
+      .status-callout{
+        padding:2.5mm 3mm!important;
+        margin-bottom:2.5mm!important;
+        font-size:9px!important;
+        line-height:1.5!important;
+        break-inside:avoid!important;
+      }
+
+      .summary-box{
+        padding:3mm!important;
+        font-size:9px!important;
+        line-height:1.55!important;
+        break-inside:avoid!important;
+        page-break-inside:avoid!important;
+      }
+
+      .summary-box h3{
+        font-size:12px!important;
+        margin-bottom:1.5mm!important;
+      }
+
+      .summary-box ul{
+        margin:1mm 0 0!important;
+        padding-right:5mm!important;
+      }
+
+      .summary-box li{
+        margin:1mm 0!important;
+      }
+
+      .insight-grid{
+        grid-template-columns:repeat(4,1fr)!important;
+        gap:2mm!important;
+        margin-top:2.5mm!important;
+        break-inside:avoid!important;
+      }
+
+      .insight-card{
+        padding:2.5mm!important;
+        border-radius:7px!important;
+      }
+
+      .insight-card span{
+        font-size:8px!important;
+      }
+
+      .insight-card strong{
+        font-size:10px!important;
+      }
+
+      .metric-help{
+        display:none!important;
+      }
+
+      .table-wrap{
+        overflow:visible!important;
+        border-radius:6px!important;
+      }
+
+      table{
+        min-width:0!important;
+        width:100%!important;
+        font-size:8.5px!important;
+        table-layout:fixed!important;
+      }
+
+      thead{
+        display:table-header-group!important;
+      }
+
+      tr{
+        break-inside:avoid!important;
+        page-break-inside:avoid!important;
+      }
+
+      th,td{
+        padding:1.6mm 1.4mm!important;
+        line-height:1.35!important;
+        word-wrap:break-word!important;
+      }
+
+      .need-name{
+        min-width:0!important;
+      }
+
+      .priority-bar{
+        display:none!important;
+      }
+
+      .badge{
+        font-size:7.5px!important;
+        padding:1mm 1.5mm!important;
+      }
+
+      .cards{
+        grid-template-columns:repeat(3,1fr)!important;
+        gap:2mm!important;
+      }
+
+      .mini-card{
+        padding:2.5mm!important;
+        break-inside:avoid!important;
+      }
+
+      .list-row{
+        padding:2.5mm!important;
+        break-inside:avoid!important;
+      }
+
+      .official-footer{
+        margin-top:4mm!important;
+        padding:4mm!important;
+        border-radius:9px!important;
+        break-inside:avoid!important;
+        page-break-inside:avoid!important;
+      }
+
+      .official-footer h3{
+        font-size:12px!important;
+        margin-bottom:3mm!important;
+      }
+
+      .signatures{
+        grid-template-columns:repeat(3,1fr)!important;
+        gap:4mm!important;
+      }
+
+      .signature{
+        min-height:18mm!important;
+        padding-top:3mm!important;
+      }
+
+      .signature .role,
+      .signature .title{
+        font-size:8px!important;
+      }
+
+      .signature .name{
+        font-size:10px!important;
+      }
+
+      /* منع الفراغ الكبير بعد بطاقات المؤشرات */
+      .stats + .panel{
+        margin-top:0!important;
+      }
+
+      /* اجعل التقرير يبدأ بالتحليل مباشرة */
+      #content{
+        display:block!important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="official-header">
+      <img src="school-header.jpg" alt="الترويسة الرسمية للمدرسة"
+           onerror="this.parentElement.style.display='none'">
+    </section>
+
+    <section class="report-title">
+      <h2>التقرير التحليلي لحصر الاحتياجات التدريبية</h2>
+      <p>مدرسة الرفاع الغربي الابتدائية للبنين — رفع الكفاءة المهنية والتطوير المهني</p>
+    </section>
+
+    <header class="topbar">
+      <div>
+        <h1 id="pageTitle">نتائج حصر الاحتياجات التدريبية</h1>
+        <p id="pageMeta">جاري تحميل بيانات الحصر...</p>
+      </div>
+      <div class="actions">
+        <button class="btn btn-soft" type="button" onclick="location.href='training-needs.html'">العودة للحصر</button>
+        <button class="btn btn-gold" type="button" onclick="window.print()">طباعة التقرير</button>
+      </div>
+    </header>
+
+    <div id="loadingBox" class="loading" style="margin-top:14px">جاري تحميل وتحليل النتائج...</div>
+    <div id="errorBox" class="error hidden" style="margin-top:14px"></div>
+
+    <section id="content" class="hidden">
+      <section class="stats">
+        <article class="stat"><span>إجمالي الاستجابات</span><strong id="statTotal">0</strong></article>
+        <article class="stat"><span>المعلمات</span><strong id="statTeachers">0</strong></article>
+        <article class="stat"><span>الإداريات</span><strong id="statAdmins">0</strong></article>
+        <article class="stat"><span>المستجدات</span><strong id="statNew">0</strong></article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>قراءة سريعة للنتائج</h2>
+            <p>ملخص تلقائي يشرح ما تعنيه الأرقام الحالية دون الحاجة إلى تفسير يدوي.</p>
+          </div>
+        </div>
+
+        <div id="resultStatusCallout" class="status-callout preliminary"></div>
+
+        <div id="executiveSummary" class="summary-box">
+          <h3>الملخص التنفيذي</h3>
+          <div>جاري إعداد القراءة التفسيرية للنتائج...</div>
+        </div>
+
+        <div class="insight-grid">
+          <div class="insight-card"><span>أعلى احتياج حالي</span><strong id="insightTopNeed">—</strong></div>
+          <div class="insight-card"><span>الفئة الأكثر ظهورًا في الاحتياجات المرتفعة</span><strong id="insightTopGroup">—</strong></div>
+          <div class="insight-card"><span>قراءة تفضيلات أسلوب التدريب</span><strong id="insightTopMethod">—</strong></div>
+          <div class="insight-card"><span>خبرات داخلية قابلة للمشاركة</span><strong id="insightExpertiseCount">0</strong></div>
+        </div>
+
+        <div class="metric-help">
+          <div><strong>عدد الإجابات</strong>عدد من أجابوا فعليًا عن البند ضمن الفئة المعروضة.</div>
+          <div><strong>مرتفع + مرتفع جدًا</strong>عدد من اختاروا الدرجة 4 أو 5 لهذا الاحتياج.</div>
+          <div><strong>النسبة</strong>نسبة اختيارات 4 و5 من إجمالي من أجابوا عن البند.</div>
+          <div><strong>المتوسط / 5</strong>متوسط درجة الاحتياج لجميع الإجابات على البند.</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>مرشحات التحليل</h2>
+            <p>استخدمي المرشحات لعرض النتائج حسب الفئة أو القسم أو حالة المستجدات.</p>
+          </div>
+          <button id="resetFiltersBtn" class="btn btn-soft" type="button">إعادة تعيين</button>
+        </div>
+
+        <div class="filters">
+          <div class="field">
+            <label for="filterRole">الفئة الوظيفية</label>
+            <select id="filterRole">
+              <option value="all">الكل</option>
+              <option value="teacher">المعلمات</option>
+              <option value="admin">الإداريات</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="filterDepartment">القسم</label>
+            <select id="filterDepartment">
+              <option value="all">كل الأقسام</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="filterNew">المستجدات</label>
+            <select id="filterNew">
+              <option value="all">الكل</option>
+              <option value="yes">المستجدات فقط</option>
+              <option value="no">غير المستجدات</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="filterSearch">بحث بالاسم</label>
+            <input id="filterSearch" type="text" placeholder="اكتبي الاسم...">
+          </div>
+        </div>
+
+        <div id="filterSummary" class="note"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>الأولويات التدريبية</h2>
+            <p>الترتيب مبني على نسبة من اختاروا «مرتفع» أو «مرتفع جدًا»، مع إظهار المتوسط من 5.</p>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <button class="tab active" data-group="all">جميع البنود</button>
+          <button class="tab" data-group="teacher">المعلمات</button>
+          <button class="tab" data-group="admin">الإداريات</button>
+          <button class="tab" data-group="new_staff">المستجدات</button>
+        </div>
+
+        <div id="prioritiesTable"></div>
+      </section>
+
+      <section class="panel internal-only">
+        <div class="panel-head">
+          <div>
+            <h2>المتابعة الفردية للاحتياجات المرتفعة</h2>
+            <p>جدول داخلي مختصر يوضح من اختارت 4 أو 5، مع الاحتياج والدرجة، لدعم التخطيط والمتابعة الفردية.</p>
+          </div>
+        </div>
+        <div id="peopleNeeds"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>أساليب التدريب المفضلة</h2>
+            <p>توزيع اختيارات المشاركات لأسلوب التدريب المفضل.</p>
+          </div>
+        </div>
+        <div id="methodsList" class="list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>الخبرات المتاحة داخل المدرسة</h2>
+            <p>الموظفات اللاتي أشرن إلى إمكانية مشاركة خبرة أو مهارة مع الزميلات.</p>
+          </div>
+        </div>
+        <div id="expertiseList"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>احتياجات تدريبية إضافية</h2>
+            <p>الاحتياجات المفتوحة التي أضيفت ولم تكن ضمن البنود المحددة مسبقًا.</p>
+          </div>
+        </div>
+        <div id="otherNeedsList" class="list"></div>
+      </section>
+
+      <section class="official-footer">
+        <h3>إعداد واعتماد التقرير</h3>
+        <div class="signatures">
+          <div class="signature">
+            <div class="role">إعداد</div>
+            <div class="name">فاتن صلاح</div>
+            <div class="title">اختصاصي مصادر تعلم</div>
+          </div>
+          <div class="signature">
+            <div class="role">المديرة المساعدة</div>
+            <div class="name">خلود الكعبي</div>
+          </div>
+          <div class="signature">
+            <div class="role">مديرة المدرسة</div>
+            <div class="name">أحلام السويدي</div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+<script>
+  const sb = supabase.createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey);
+  const params = new URLSearchParams(location.search);
+  const surveyId = params.get("id");
+
+  let survey = null;
+  let items = [];
+  let submissions = [];
+  let answers = [];
+  let activeGroup = "all";
+
+  document.addEventListener("DOMContentLoaded", init);
+
+  async function init(){
+    if(!surveyId){
+      showFatal("رابط النتائج غير مكتمل.");
+      return;
+    }
+
+    const {data:{session},error:sessionError} = await sb.auth.getSession();
+    if(sessionError || !session){
+      location.href = "index.html";
+      return;
+    }
+
+    bindEvents();
+
+    try{
+      const [surveyRes,itemsRes,subsRes,answersRes] = await Promise.all([
+        sb.from("training_needs_surveys").select("*").eq("id",surveyId).single(),
+        sb.from("training_needs_items").select("*").eq("survey_id",surveyId).order("target_group").order("sort_order"),
+        sb.from("training_needs_submissions").select("*").eq("survey_id",surveyId).order("submitted_at",{ascending:false}),
+        sb.from("training_needs_answers")
+          .select("id,submission_id,item_id,need_level,created_at")
+      ]);
+
+      if(surveyRes.error) throw surveyRes.error;
+      if(itemsRes.error) throw itemsRes.error;
+      if(subsRes.error) throw subsRes.error;
+      if(answersRes.error) throw answersRes.error;
+
+      survey = surveyRes.data;
+      items = itemsRes.data || [];
+      submissions = subsRes.data || [];
+
+      const submissionIds = new Set(submissions.map(s=>s.id));
+      answers = (answersRes.data || []).filter(a=>submissionIds.has(a.submission_id));
+
+      renderHeader();
+      populateDepartmentFilter();
+      renderAll();
+
+      document.getElementById("loadingBox").classList.add("hidden");
+      document.getElementById("content").classList.remove("hidden");
+    }catch(error){
+      console.error("Load training results error:",error);
+      showFatal("تعذر تحميل نتائج الحصر في الوقت الحالي.");
+    }
+  }
+
+  function bindEvents(){
+    ["filterRole","filterDepartment","filterNew"].forEach(id=>{
+      document.getElementById(id).addEventListener("change",renderAll);
+    });
+    document.getElementById("filterSearch").addEventListener("input",renderAll);
+
+    document.getElementById("resetFiltersBtn").addEventListener("click",()=>{
+      document.getElementById("filterRole").value="all";
+      document.getElementById("filterDepartment").value="all";
+      document.getElementById("filterNew").value="all";
+      document.getElementById("filterSearch").value="";
+      renderAll();
+    });
+
+    document.querySelectorAll(".tab").forEach(btn=>{
+      btn.addEventListener("click",()=>{
+        document.querySelectorAll(".tab").forEach(b=>b.classList.remove("active"));
+        btn.classList.add("active");
+        activeGroup = btn.dataset.group;
+        renderPriorities(getFilteredSubmissions());
+      });
+    });
+  }
+
+  function renderHeader(){
+    document.getElementById("pageTitle").textContent =
+      survey.title || "نتائج حصر الاحتياجات التدريبية";
+    document.getElementById("pageMeta").textContent =
+      `العام الدراسي ${survey.academic_year || ""} • حالة الحصر: ${statusText(survey.status)}`;
+  }
+
+  function populateDepartmentFilter(){
+    const depts = [...new Set(
+      submissions.map(s=>s.department).filter(Boolean)
+    )].sort((a,b)=>a.localeCompare(b,"ar"));
+
+    const select = document.getElementById("filterDepartment");
+    select.innerHTML =
+      `<option value="all">كل الأقسام</option>` +
+      depts.map(d=>`<option value="${escapeAttr(d)}">${escapeHtml(d)}</option>`).join("");
+  }
+
+  function getFilteredSubmissions(){
+    const role = document.getElementById("filterRole").value;
+    const dept = document.getElementById("filterDepartment").value;
+    const newState = document.getElementById("filterNew").value;
+    const search = document.getElementById("filterSearch").value.trim().toLowerCase();
+
+    return submissions.filter(s=>{
+      if(role !== "all" && s.employee_type !== role) return false;
+      if(dept !== "all" && (s.department || "") !== dept) return false;
+      if(newState === "yes" && !s.is_new_staff) return false;
+      if(newState === "no" && s.is_new_staff) return false;
+      if(search && !String(s.full_name || "").toLowerCase().includes(search)) return false;
+      return true;
+    });
+  }
+
+  function renderAll(){
+    const filtered = getFilteredSubmissions();
+    renderStats(filtered);
+    renderFilterSummary(filtered);
+    renderExecutiveSummary(filtered);
+    renderPriorities(filtered);
+    renderPeopleNeeds(filtered);
+    renderMethods(filtered);
+    renderExpertise(filtered);
+    renderOtherNeeds(filtered);
+  }
+
+  function renderStats(filtered){
+    document.getElementById("statTotal").textContent = filtered.length;
+    document.getElementById("statTeachers").textContent =
+      filtered.filter(s=>s.employee_type==="teacher").length;
+    document.getElementById("statAdmins").textContent =
+      filtered.filter(s=>s.employee_type==="admin").length;
+    document.getElementById("statNew").textContent =
+      filtered.filter(s=>s.is_new_staff).length;
+  }
+
+  function renderFilterSummary(filtered){
+    const total = submissions.length;
+    const showing = filtered.length;
+    document.getElementById("filterSummary").textContent =
+      `يتم عرض ${showing} استجابة من أصل ${total} استجابة محفوظة في هذا الحصر.`;
+  }
+
+  function renderExecutiveSummary(filteredSubs){
+    const callout = document.getElementById("resultStatusCallout");
+    const summary = document.getElementById("executiveSummary");
+
+    const isFinal = survey.status === "closed";
+    callout.className = `status-callout ${isFinal ? "final" : "preliminary"}`;
+    callout.textContent = isFinal
+      ? "الحصر مغلق؛ النتائج المعروضة تمثل القراءة النهائية للاستجابات المحفوظة."
+      : "الحصر ما زال منشورًا؛ النتائج الحالية أولية وتتغير تلقائيًا مع وصول استجابات جديدة، ولا تُعتمد كحكم عام على المدرسة قبل اكتمال الحصر.";
+
+    if(!filteredSubs.length){
+      summary.innerHTML = `
+        <h3>الملخص التنفيذي</h3>
+        <div>لا توجد استجابات مطابقة للمرشحات الحالية، لذلك لا يمكن تكوين قراءة تفسيرية لهذه المجموعة.</div>`;
+      setInsight("insightTopNeed","—");
+      setInsight("insightTopGroup","—");
+      setInsight("insightTopMethod","—");
+      setInsight("insightExpertiseCount","0");
+      return;
+    }
+
+    const subIds = new Set(filteredSubs.map(s=>s.id));
+    const candidateRows = items.map(item=>{
+      const itemAnswers = answers.filter(a =>
+        a.item_id === item.id && subIds.has(a.submission_id)
+      );
+      if(!itemAnswers.length) return null;
+
+      const count = itemAnswers.length;
+      const highCount = itemAnswers.filter(a=>a.need_level>=4).length;
+      const highPct = count ? (highCount/count)*100 : 0;
+      const avg = count
+        ? itemAnswers.reduce((sum,a)=>sum+Number(a.need_level||0),0)/count
+        : 0;
+
+      return {item,count,highCount,highPct,avg};
+    }).filter(Boolean)
+      .sort((a,b)=>b.highCount-a.highCount || b.highPct-a.highPct || b.avg-a.avg);
+
+    const top = candidateRows.slice(0,3);
+
+    const teachers = filteredSubs.filter(s=>s.employee_type==="teacher").length;
+    const admins = filteredSubs.filter(s=>s.employee_type==="admin").length;
+    const newStaff = filteredSubs.filter(s=>s.is_new_staff).length;
+
+    const methodCounts = new Map();
+    filteredSubs.forEach(s=>{
+      const m = (s.preferred_training_method || "").trim();
+      if(m) methodCounts.set(m,(methodCounts.get(m)||0)+1);
+    });
+
+    const methodEntries = [...methodCounts.entries()]
+      .sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0],"ar"));
+
+    const methodResponseCount = methodEntries.reduce((sum,x)=>sum+x[1],0);
+    const maxMethodCount = methodEntries.length ? methodEntries[0][1] : 0;
+    const leadingMethods = methodEntries.filter(x=>x[1]===maxMethodCount);
+
+    let methodHeadline = "لا توجد بيانات";
+    if(methodEntries.length){
+      if(leadingMethods.length > 1){
+        const tiedNames = leadingMethods.map(([name,count])=>{
+          const pct = methodResponseCount ? (count/methodResponseCount)*100 : 0;
+          return `${name} (${formatPct(pct)})`;
+        }).join(" + ");
+        methodHeadline = `تعادل: ${tiedNames}`;
+      }else{
+        const pct = methodResponseCount ? (leadingMethods[0][1]/methodResponseCount)*100 : 0;
+        methodHeadline = `${leadingMethods[0][0]} (${formatPct(pct)})`;
+      }
+    }
+
+    const methodDistributionHtml = methodEntries.length
+      ? methodEntries.map(([name,count])=>{
+          const pct = methodResponseCount ? (count/methodResponseCount)*100 : 0;
+          return `<li><strong>${escapeHtml(name)}</strong>: ${count} من ${methodResponseCount} (${formatPct(pct)}).</li>`;
+        }).join("")
+      : "";
+
+    const expertiseCount = filteredSubs.filter(s =>
+      s.can_share_expertise && (s.expertise_area || "").trim()
+    ).length;
+
+    const highByGroup = {teacher:0,admin:0,new_staff:0};
+    answers.forEach(a=>{
+      if(a.need_level < 4 || !subIds.has(a.submission_id)) return;
+      const item = items.find(i=>i.id===a.item_id);
+      if(item && highByGroup[item.target_group] !== undefined){
+        highByGroup[item.target_group]++;
+      }
+    });
+
+    const groupEntries = Object.entries(highByGroup).sort((a,b)=>b[1]-a[1]);
+    const topGroup = groupEntries[0] && groupEntries[0][1] > 0
+      ? groupText(groupEntries[0][0])
+      : "لا توجد حاجة مرتفعة مسجلة";
+
+    const populationText = [
+      teachers ? `${teachers} معلمة` : "",
+      admins ? `${admins} إدارية` : "",
+      newStaff ? `${newStaff} من المستجدات` : ""
+    ].filter(Boolean).join("، ");
+
+    const topLines = top.map((r,i)=>
+      `<li><strong>${i+1}. ${escapeHtml(r.item.need_text)}</strong> — ${r.highCount} من ${r.count} اختاروا «مرتفع» أو «مرتفع جدًا» (${formatPct(r.highPct)})، ومتوسط الاحتياج ${r.avg.toFixed(2)} من 5.</li>`
+    ).join("");
+
+    let caution = "";
+    if(filteredSubs.length < 5){
+      caution = `<li><strong>ملاحظة مهمة:</strong> عدد الاستجابات المعروضة حاليًا ${filteredSubs.length} فقط؛ لذلك تُقرأ النسب باعتبارها وصفًا لهذه الاستجابات فقط، وليست أولوية عامة للمدرسة.</li>`;
+    }else if(!isFinal){
+      caution = `<li><strong>ملاحظة:</strong> الحصر ما زال مفتوحًا، لذا قد يتغير ترتيب الاحتياجات مع وصول استجابات جديدة.</li>`;
+    }
+
+    summary.innerHTML = `
+      <h3>الملخص التنفيذي</h3>
+      <ul>
+        <li>يعتمد هذا الملخص على <strong>${filteredSubs.length}</strong> استجابة مطابقة للمرشحات الحالية${populationText ? ` (${escapeHtml(populationText)})` : ""}.</li>
+        ${topLines || "<li>لا توجد بنود قابلة للتحليل ضمن الاختيار الحالي.</li>"}
+        ${methodEntries.length ? `
+          <li><strong>توزيع أساليب التدريب المفضلة:</strong>
+            <ul>${methodDistributionHtml}</ul>
+          </li>
+          ${leadingMethods.length > 1
+            ? `<li><strong>النتيجة:</strong> يوجد تعادل بين ${leadingMethods.length} أساليب في المركز الأول؛ لذلك لا يوجد أسلوب تدريب مفضل منفرد حاليًا.</li>`
+            : `<li><strong>النتيجة:</strong> الأسلوب الأكثر تفضيلًا حاليًا هو <strong>${escapeHtml(leadingMethods[0][0])}</strong> بنسبة ${formatPct((leadingMethods[0][1]/methodResponseCount)*100)}.</li>`
+          }`
+          : ""}
+        ${expertiseCount ? `<li>يوجد حاليًا <strong>${expertiseCount}</strong> موظفة أبدت استعدادًا لمشاركة خبرة أو مهارة مع الزميلات، ما يتيح فرصًا للدعم الداخلي وتبادل الخبرات.</li>` : ""}
+        ${caution}
+      </ul>`;
+
+    setInsight("insightTopNeed", top[0] ? top[0].item.need_text : "لا توجد بيانات");
+    setInsight("insightTopGroup", topGroup);
+    setInsight("insightTopMethod", methodHeadline);
+    setInsight("insightExpertiseCount", String(expertiseCount));
+  }
+
+  function setInsight(id,value){
+    const el = document.getElementById(id);
+    if(el) el.textContent = value;
+  }
+
+  function renderPriorities(filteredSubs){
+    const box = document.getElementById("prioritiesTable");
+
+    if(!filteredSubs.length){
+      box.innerHTML = `<div class="empty">لا توجد استجابات مطابقة للمرشحات الحالية.</div>`;
+      return;
+    }
+
+    const subIds = new Set(filteredSubs.map(s=>s.id));
+    const allowedItems = items.filter(i=>{
+      if(activeGroup === "all") return true;
+      return i.target_group === activeGroup;
+    });
+
+    const rows = allowedItems.map(item=>{
+      const itemAnswers = answers.filter(a=>
+        a.item_id===item.id && subIds.has(a.submission_id)
+      );
+
+      if(!itemAnswers.length) return null;
+
+      const count = itemAnswers.length;
+      const highCount = itemAnswers.filter(a=>a.need_level>=4).length;
+      const avg = itemAnswers.reduce((sum,a)=>sum+Number(a.need_level||0),0)/count;
+      const highPct = (highCount/count)*100;
+
+      return {
+        item,
+        count,
+        highCount,
+        highPct,
+        avg
+      };
+    }).filter(Boolean).sort((a,b)=>
+      b.highPct-a.highPct || b.avg-a.avg || a.item.sort_order-b.item.sort_order
+    );
+
+    if(!rows.length){
+      box.innerHTML = `<div class="empty">لا توجد بيانات لهذا المحور ضمن المرشحات الحالية.</div>`;
+      return;
+    }
+
+    box.innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>الاحتياج التدريبي</th>
+              <th>الفئة</th>
+              <th>عدد الإجابات</th>
+              <th>مرتفع + مرتفع جدًا</th>
+              <th>النسبة</th>
+              <th>المتوسط / 5</th>
+              <th>قراءة الحاجة الحالية</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(r=>{
+              const priority = priorityLabel(r.highPct,r.count);
+              return `
+                <tr>
+                  <td class="need-name">${escapeHtml(r.item.need_text)}</td>
+                  <td>${escapeHtml(groupText(r.item.target_group))}</td>
+                  <td>${r.count}</td>
+                  <td>${r.highCount}</td>
+                  <td>
+                    <strong>${formatPct(r.highPct)}</strong>
+                    <div class="priority-bar">
+                      <div class="priority-fill" style="width:${Math.min(100,r.highPct)}%"></div>
+                    </div>
+                  </td>
+                  <td>${r.avg.toFixed(2)}</td>
+                  <td><span class="badge ${priority.className}">${priority.text}</span></td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  function renderPeopleNeeds(filteredSubs){
+    const box = document.getElementById("peopleNeeds");
+
+    if(!filteredSubs.length){
+      box.innerHTML = `<div class="empty">لا توجد استجابات مطابقة للمرشحات الحالية.</div>`;
+      return;
+    }
+
+    const subMap = new Map(filteredSubs.map(s=>[s.id,s]));
+    const itemMap = new Map(items.map(i=>[i.id,i]));
+
+    const rows = answers
+      .filter(a=>a.need_level>=4 && subMap.has(a.submission_id))
+      .map(a=>{
+        const sub = subMap.get(a.submission_id);
+        const item = itemMap.get(a.item_id);
+        return item && sub ? {sub,item,level:a.need_level} : null;
+      })
+      .filter(Boolean)
+      .sort((a,b)=>
+        a.sub.full_name.localeCompare(b.sub.full_name,"ar") ||
+        b.level-a.level ||
+        a.item.sort_order-b.item.sort_order
+      );
+
+    if(!rows.length){
+      box.innerHTML = `<div class="empty">لا توجد احتياجات بدرجة مرتفعة أو مرتفعة جدًا ضمن المرشحات الحالية.</div>`;
+      return;
+    }
+
+    box.innerHTML = `
+      <div class="table-wrap internal-table">
+        <table>
+          <thead>
+            <tr>
+              <th>الاسم</th>
+              <th>الفئة</th>
+              <th>القسم</th>
+              <th>الاحتياج التدريبي</th>
+              <th>الدرجة</th>
+              <th>القراءة</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(r=>`
+              <tr>
+                <td><strong>${escapeHtml(r.sub.full_name)}</strong></td>
+                <td>${escapeHtml(employeeText(r.sub.employee_type))}${r.sub.is_new_staff?" • مستجدة":""}</td>
+                <td>${escapeHtml(r.sub.department || "—")}</td>
+                <td class="need-name">${escapeHtml(r.item.need_text)}</td>
+                <td><strong>${r.level}/5</strong></td>
+                <td><span class="badge ${r.level===5?"high":"mid"}">${r.level===5?"مرتفع جدًا":"مرتفع"}</span></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+      <div class="compact-note">هذه البيانات للاستخدام الداخلي في تخطيط الدعم والمتابعة، ولا تظهر عند طباعة التقرير الرسمي.</div>`;
+  }
+
+  function renderMethods(filteredSubs){
+    const box = document.getElementById("methodsList");
+
+    const methods = new Map();
+    filteredSubs.forEach(s=>{
+      const value = (s.preferred_training_method || "").trim();
+      if(!value) return;
+      methods.set(value,(methods.get(value)||0)+1);
+    });
+
+    if(!methods.size){
+      box.innerHTML = `<div class="empty">لا توجد بيانات لأساليب التدريب المفضلة.</div>`;
+      return;
+    }
+
+    const total = [...methods.values()].reduce((a,b)=>a+b,0);
+
+    box.innerHTML = [...methods.entries()]
+      .sort((a,b)=>b[1]-a[1])
+      .map(([method,count])=>`
+        <div class="list-row">
+          <div class="label">${escapeHtml(method)}</div>
+          <div class="value">${count} (${formatPct((count/total)*100)})</div>
+        </div>
+      `).join("");
+  }
+
+  function renderExpertise(filteredSubs){
+    const box = document.getElementById("expertiseList");
+    const people = filteredSubs.filter(s=>
+      s.can_share_expertise && (s.expertise_area || "").trim()
+    );
+
+    if(!people.length){
+      box.innerHTML = `<div class="empty">لم تُسجل خبرات قابلة للمشاركة ضمن المرشحات الحالية.</div>`;
+      return;
+    }
+
+    box.innerHTML = `<div class="cards">${
+      people.map(s=>`
+        <div class="mini-card">
+          <h3>${escapeHtml(s.full_name)}</h3>
+          <p>${escapeHtml(employeeText(s.employee_type))}${s.department?` • ${escapeHtml(s.department)}`:""}</p>
+          <p style="margin-top:7px;color:var(--text)">${escapeHtml(s.expertise_area)}</p>
+        </div>
+      `).join("")
+    }</div>`;
+  }
+
+  function renderOtherNeeds(filteredSubs){
+    const box = document.getElementById("otherNeedsList");
+    const rows = filteredSubs.filter(s=>(s.other_training_need || "").trim());
+
+    if(!rows.length){
+      box.innerHTML = `<div class="empty">لا توجد احتياجات إضافية مسجلة ضمن المرشحات الحالية.</div>`;
+      return;
+    }
+
+    box.innerHTML = rows.map(s=>`
+      <div class="list-row">
+        <div class="label">
+          <strong>${escapeHtml(s.full_name)}</strong><br>
+          ${escapeHtml(s.other_training_need)}
+        </div>
+        <div class="value">
+          ${escapeHtml(employeeText(s.employee_type))}
+          ${s.department?` • ${escapeHtml(s.department)}`:""}
+        </div>
+      </div>
+    `).join("");
+  }
+
+  function priorityLabel(pct,count){
+    if(count < 5){
+      if(pct >= 60) return {text:"حاجة مرتفعة ضمن الردود الحالية",className:"high"};
+      if(pct >= 30) return {text:"حاجة متوسطة ضمن الردود الحالية",className:"mid"};
+      return {text:"حاجة محدودة ضمن الردود الحالية",className:"low"};
+    }
+    if(survey.status !== "closed"){
+      if(pct >= 60) return {text:"اتجاه أولي مرتفع",className:"high"};
+      if(pct >= 30) return {text:"اتجاه أولي متوسط",className:"mid"};
+      return {text:"اتجاه أولي محدود",className:"low"};
+    }
+    if(pct >= 60) return {text:"أولوية تدريبية مرتفعة",className:"high"};
+    if(pct >= 30) return {text:"أولوية تدريبية متوسطة",className:"mid"};
+    return {text:"أولوية تدريبية محدودة",className:"low"};
+  }
+
+  function statusText(status){
+    return status==="published"?"منشور":status==="closed"?"مغلق":"مسودة";
+  }
+
+  function employeeText(type){
+    return type==="teacher"?"معلمة":type==="admin"?"إدارية":"غير محدد";
+  }
+
+  function groupText(group){
+    return group==="teacher"?"المعلمات":
+           group==="admin"?"الإداريات":
+           group==="new_staff"?"المستجدات":"غير محدد";
+  }
+
+  function formatPct(value){
+    if(!Number.isFinite(value)) return "0%";
+    return `${value.toFixed(1).replace(".0","")}%`;
+  }
+
+  function showFatal(text){
+    document.getElementById("loadingBox").classList.add("hidden");
+    const box = document.getElementById("errorBox");
+    box.textContent = text;
+    box.classList.remove("hidden");
+  }
+
+  function escapeHtml(value){
+    return String(value ?? "")
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+
+  function escapeAttr(value){
+    return escapeHtml(value);
+  }
+</script>
+</body>
+</html>

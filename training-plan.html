@@ -1,0 +1,1423 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>الخطة التدريبية</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+
+  <style>
+    *{box-sizing:border-box}
+    :root{
+      --primary:#0e4b4d;--primary-dark:#08393b;--primary-soft:#edf6f4;
+      --gold:#b9964c;--gold-soft:#fbf7ed;--bg:#f2f6f5;--card:#fff;
+      --text:#173f42;--muted:#6c7d7f;--border:#d8e3e1;--danger:#a94442;
+      --success:#287348;--warning:#8a6826;--shadow:0 14px 38px rgba(10,57,59,.08)
+    }
+
+    body{
+      margin:0;font-family:Tahoma,Arial,sans-serif;color:var(--text);
+      background:
+        radial-gradient(circle at 10% 8%,rgba(185,150,76,.10),transparent 26%),
+        radial-gradient(circle at 90% 15%,rgba(14,75,77,.08),transparent 28%),
+        linear-gradient(135deg,#eef5f3,#fbfaf6 50%,#eef4f2);
+      min-height:100vh
+    }
+
+    button,input,textarea,select{font:inherit}
+    button{cursor:pointer}
+    button:disabled{opacity:.55;cursor:not-allowed}
+    .hidden{display:none!important}
+
+    .page{width:min(1280px,calc(100% - 28px));margin:22px auto 48px}
+
+    .school-header{
+      background:#fff;border:1px solid var(--border);border-radius:18px;
+      overflow:hidden;box-shadow:var(--shadow);margin-bottom:14px
+    }
+    .school-header img{display:block;width:100%;max-height:135px;object-fit:contain}
+
+    .topbar{
+      background:#fff;border:1px solid rgba(14,75,77,.15);border-radius:20px;
+      box-shadow:var(--shadow);padding:18px 20px;display:flex;align-items:center;
+      justify-content:space-between;gap:16px;position:relative;overflow:hidden
+    }
+    .topbar::before{
+      content:"";position:absolute;top:0;right:0;left:0;height:4px;
+      background:linear-gradient(90deg,var(--primary-dark),var(--gold),var(--primary))
+    }
+    .title-wrap h1{margin:0 0 5px;font-size:1.55rem;color:var(--primary-dark)}
+    .title-wrap p{margin:0;color:var(--muted);font-size:.84rem;line-height:1.7}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}
+    .topbar .actions{
+      position:sticky;top:8px;z-index:30;background:rgba(255,255,255,.96);
+      padding:6px;border-radius:12px
+    }
+    .view-switch{
+      margin:14px 0 0;display:flex;justify-content:flex-start;gap:8px;flex-wrap:wrap
+    }
+    .group-tabs{
+      margin:14px 0;background:#fff;border:1px solid var(--border);border-radius:16px;
+      padding:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;
+      box-shadow:var(--shadow)
+    }
+    .group-tab{
+      border:1px solid var(--border);background:#f9fbfa;color:var(--primary-dark);
+      border-radius:11px;padding:11px 12px;font-weight:800;cursor:pointer;
+      transition:.15s ease;text-align:center
+    }
+    .group-tab:hover{border-color:var(--primary)}
+    .group-tab.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+    .group-tab small{display:block;font-size:.64rem;font-weight:600;margin-top:3px;opacity:.82}
+
+    .view-switch .active{background:var(--primary);color:#fff;border-color:var(--primary)}
+    .official-view{display:none;margin-top:14px}
+    body.official-mode .official-view{display:block}
+    body.official-mode #professionalGuide,
+    body.official-mode #planSection{display:none!important}
+    .official-plan-head{
+      background:#fff;border:1px solid var(--border);border-radius:16px;
+      padding:15px 18px;text-align:center;box-shadow:var(--shadow);margin-bottom:12px
+    }
+    .official-plan-head h2{margin:0 0 6px;color:var(--primary-dark);font-size:1.2rem}
+    .official-plan-head p{margin:0;color:var(--muted);font-size:.75rem}
+    .official-table-wrap{overflow:auto;background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow)}
+    .official-table{width:100%;border-collapse:collapse;min-width:1350px}
+    .official-table th,.official-table td{
+      border-bottom:1px solid #dfe8e6;border-left:1px solid #e7eeec;
+      padding:8px 7px;vertical-align:top;font-size:.68rem;line-height:1.55
+    }
+    .official-table th{background:#eaf3f1;color:var(--primary-dark);font-weight:800}
+    .official-table td strong{color:var(--primary-dark)}
+
+
+    .btn{
+      border:0;border-radius:10px;padding:10px 14px;font-weight:700;
+      transition:.15s ease
+    }
+    .btn-primary{background:var(--primary);color:#fff}
+    .btn-primary:hover{background:var(--primary-dark)}
+    .btn-soft{background:#fff;border:1px solid var(--border);color:var(--primary)}
+    .btn-gold{background:var(--gold-soft);border:1px solid #e8d9b0;color:#725b2c}
+    .btn-danger{background:#fff4f4;border:1px solid #e9caca;color:var(--danger)}
+    .btn-success{background:#e9f5ed;border:1px solid #cbe4d3;color:var(--success)}
+    .btn-sm{padding:7px 9px;font-size:.72rem}
+
+    .notice{
+      margin:14px 0;background:#fff;border:1px solid var(--border);border-radius:14px;
+      padding:12px 14px;line-height:1.8;font-size:.78rem;box-shadow:0 6px 18px rgba(10,57,59,.035)
+    }
+    .notice strong{color:var(--primary-dark)}
+    .notice.warning{background:#fffaf0;border-color:#ead9b1;color:#6f592b}
+
+    .toolbar{
+      margin:14px 0;background:#fff;border:1px solid var(--border);border-radius:16px;
+      padding:14px;display:grid;grid-template-columns:1.5fr auto;gap:12px;align-items:end;
+      box-shadow:var(--shadow)
+    }
+    .field label{display:block;font-size:.76rem;font-weight:700;margin-bottom:6px;color:var(--primary-dark)}
+    .field select,.field input,.field textarea{
+      width:100%;border:1px solid #cfdcda;border-radius:9px;padding:10px 11px;
+      outline:none;background:#fff;color:var(--text)
+    }
+    .field textarea{min-height:76px;resize:vertical}
+    .field select:focus,.field input:focus,.field textarea:focus{
+      border-color:var(--primary);box-shadow:0 0 0 2px rgba(14,75,77,.07)
+    }
+
+    .summary{
+      display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin:14px 0
+    }
+    .stat{
+      background:#fff;border:1px solid var(--border);border-radius:15px;padding:15px;
+      box-shadow:0 7px 20px rgba(10,57,59,.04)
+    }
+    .stat span{display:block;color:var(--muted);font-size:.73rem;margin-bottom:7px}
+    .stat strong{font-size:1.45rem;color:var(--primary-dark);line-height:1.25}
+
+    .section{
+      background:#fff;border:1px solid var(--border);border-radius:18px;
+      box-shadow:var(--shadow);padding:17px;margin-top:14px
+    }
+    .section-head{
+      display:flex;justify-content:space-between;align-items:center;gap:12px;
+      margin-bottom:12px;flex-wrap:wrap
+    }
+    .section-head h2{margin:0;font-size:1.02rem;color:var(--primary-dark)}
+    .section-head p{margin:3px 0 0;color:var(--muted);font-size:.73rem}
+
+    .status-badge{
+      display:inline-flex;align-items:center;padding:5px 9px;border-radius:999px;
+      font-size:.7rem;font-weight:700
+    }
+    .status-draft{background:#f8f1df;color:#7b632f}
+    .status-approved{background:#e7f5ec;color:#287348}
+    .status-closed{background:#f1eeee;color:#785858}
+
+    .table-wrap{overflow:auto;border:1px solid var(--border);border-radius:12px}
+    table{border-collapse:collapse;width:100%;min-width:1900px;background:#fff}
+    th,td{
+      padding:9px 8px;border-bottom:1px solid #e7eeec;border-left:1px solid #edf1f0;
+      text-align:right;vertical-align:top;font-size:.72rem;line-height:1.55
+    }
+    th{
+      background:#f3f8f7;color:var(--primary-dark);font-size:.69rem;white-space:nowrap;
+      position:sticky;top:0;z-index:2
+    }
+    tbody tr:hover{background:#fbfdfc}
+    td.need{min-width:250px;font-weight:700}
+    td.metric{text-align:center;white-space:nowrap}
+    td input,td select,td textarea{
+      width:100%;border:1px solid #d5e0de;border-radius:7px;padding:7px 8px;
+      font-size:.7rem;background:#fff
+    }
+    td textarea{min-height:58px;resize:vertical}
+    .row-actions{display:flex;gap:5px;white-space:nowrap}
+
+    .empty,.loading,.error{
+      text-align:center;padding:34px 16px;color:var(--muted);
+      border:1px dashed var(--border);border-radius:12px;background:#fbfdfc;line-height:1.8
+    }
+    .error{color:var(--danger);background:#fffafa}
+    .footnote{margin-top:10px;color:var(--muted);font-size:.7rem;line-height:1.7}
+
+    .official-footer{
+      margin-top:18px;background:#fff;border:1px solid var(--border);
+      border-radius:16px;padding:16px;display:grid;grid-template-columns:repeat(3,1fr);
+      gap:12px;text-align:center;box-shadow:var(--shadow)
+    }
+    .official-footer strong{display:block;color:var(--primary-dark);font-size:.78rem;margin-bottom:5px}
+    .official-footer span{font-size:.74rem;color:var(--text);line-height:1.7}
+
+
+    .plan-cards{display:grid;gap:14px}
+    .plan-card{
+      border:1px solid var(--border);border-radius:16px;background:#fff;
+      overflow:hidden;box-shadow:0 8px 24px rgba(10,57,59,.045)
+    }
+    .plan-card-head{
+      display:flex;justify-content:space-between;gap:14px;align-items:flex-start;
+      padding:15px 16px;background:linear-gradient(135deg,#f5faf8,#fffaf0)
+    }
+    .plan-card-title{display:flex;gap:11px;align-items:flex-start}
+    .plan-number{
+      min-width:30px;height:30px;border-radius:9px;background:var(--primary);
+      color:#fff;display:grid;place-items:center;font-weight:800
+    }
+    .plan-card h3{margin:0 0 6px;font-size:.93rem;color:var(--primary-dark);line-height:1.7}
+    .plan-meta{display:flex;gap:6px;flex-wrap:wrap}
+    .chip{
+      display:inline-flex;padding:4px 8px;border-radius:999px;background:#fff;
+      border:1px solid var(--border);font-size:.66rem;font-weight:700
+    }
+    .priority-عالية{background:#fff0ee;color:#9a3d35;border-color:#f0ccc7}
+    .priority-متوسطة{background:#fff8e8;color:#816526;border-color:#eadbb5}
+    .priority-منخفضة{background:#edf6f1;color:#397057;border-color:#d1e7db}
+    .plan-rationale{
+      margin:0 16px;padding:10px 12px;border-radius:10px;background:#f7faf9;
+      border-right:4px solid var(--gold);font-size:.72rem;line-height:1.8
+    }
+    .plan-form-grid{
+      display:grid;grid-template-columns:repeat(12,1fr);gap:10px;padding:14px 16px 16px
+    }
+    .plan-field{grid-column:span 3}
+    .plan-field.wide{grid-column:span 6}
+    .plan-field.full{grid-column:1/-1}
+    .plan-field label{
+      display:block;font-size:.68rem;font-weight:800;color:var(--primary-dark);margin-bottom:5px
+    }
+    .plan-field input,.plan-field select,.plan-field textarea{
+      width:100%;border:1px solid #d4dfdd;border-radius:8px;padding:8px 9px;
+      background:#fff;color:var(--text);font-size:.7rem
+    }
+    .plan-field textarea{min-height:62px;resize:vertical;line-height:1.65}
+    .plan-field input:focus,.plan-field select:focus,.plan-field textarea:focus{
+      outline:none;border-color:var(--primary);box-shadow:0 0 0 2px rgba(14,75,77,.06)
+    }
+    .plan-card-actions{
+      padding:0 16px 14px;display:flex;justify-content:flex-end
+    }
+    .print-plan{display:none}
+    .print-table{width:100%;border-collapse:collapse;table-layout:fixed}
+    .print-table th,.print-table td{
+      border:1px solid #ccd8d6;padding:5px;vertical-align:top;font-size:8px;line-height:1.45
+    }
+    .print-table th{background:#eaf3f1;color:#173f42}
+
+    @media(max-width:900px){
+      .plan-field,.plan-field.wide{grid-column:span 6}
+
+      .toolbar{grid-template-columns:1fr}
+      .summary{grid-template-columns:repeat(2,1fr)}
+      .topbar{align-items:flex-start;flex-direction:column}
+      .official-footer{grid-template-columns:1fr}
+    }
+    @media(max-width:520px){
+      .plan-form-grid{grid-template-columns:1fr}
+      .plan-field,.plan-field.wide,.plan-field.full{grid-column:1}
+
+      .page{width:calc(100% - 14px);margin-top:8px}
+      .summary{grid-template-columns:1fr 1fr}
+      .title-wrap h1{font-size:1.25rem}
+    }
+
+    @media print{
+      @page{size:A4 landscape;margin:8mm}
+      body{background:#fff}
+      .page{width:100%;margin:0}
+      .school-header,.topbar,.section,.official-footer,.stat{box-shadow:none}
+      .no-print,.toolbar,.notice,.row-actions,.plan-cards,#professionalGuide,.view-switch{display:none!important}
+      #planSection{display:none!important}
+      .official-view{display:block!important;margin-top:6px}
+      .official-plan-head{box-shadow:none;padding:8px;border-radius:6px;margin-bottom:6px}
+      .official-table-wrap{overflow:visible;box-shadow:none;border-radius:4px}
+      .official-table{min-width:0;table-layout:fixed}
+      .official-table th,.official-table td{font-size:7px;padding:3px;line-height:1.3}
+      .print-plan{display:none!important}
+      .topbar{padding:10px 12px;border-radius:8px}
+      .title-wrap h1{font-size:16px}
+      .title-wrap p{font-size:9px}
+      .summary{grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0}
+      .stat{padding:8px;border-radius:7px}
+      .stat span{font-size:8px;margin-bottom:3px}
+      .stat strong{font-size:13px}
+      .section{padding:9px;border-radius:8px;margin-top:8px;break-inside:auto}
+      .section-head{margin-bottom:6px}
+      .section-head h2{font-size:11px}
+      .section-head p{font-size:8px}
+      .table-wrap{overflow:visible;border-radius:5px}
+      table{min-width:0;table-layout:fixed}
+      th,td{font-size:7.5px;padding:4px 3px;line-height:1.3}
+      th{font-size:7px;position:static}
+      td.need{min-width:0}
+      td input,td select,td textarea{
+        border:0;padding:0;background:transparent;font-size:7.5px;
+        appearance:none;-webkit-appearance:none
+      }
+      td textarea{min-height:0;resize:none}
+      tr{break-inside:avoid;page-break-inside:avoid}
+      .official-footer{
+        box-shadow:none;padding:8px;margin-top:8px;border-radius:6px;
+        grid-template-columns:repeat(3,1fr)
+      }
+      .official-footer strong,.official-footer span{font-size:8px}
+    }
+  </style>
+</head>
+
+<body>
+<div class="page">
+
+  <div class="school-header">
+    <img src="school-header.jpg" alt="الترويسة الرسمية للمدرسة"
+         onerror="this.parentElement.style.display='none'">
+  </div>
+
+  <header class="topbar">
+    <div class="title-wrap">
+      <h1>الخطط التدريبية المبنية على الاحتياجات الفعلية</h1>
+      <p>رفع الكفاءة المهنية — خطط مستقلة للمعلمات والإداريات والمستجدات، مبنية على نتائج الحصر المعتمد.</p>
+    </div>
+    <div class="actions no-print">
+      <button class="btn btn-soft" type="button" onclick="location.href='training-needs.html'">العودة إلى إدارة الحصر</button>
+      <button id="editViewTopBtn" class="btn btn-soft" type="button">عرض التحرير</button>
+      <button id="officialViewTopBtn" class="btn btn-soft" type="button">عرض الخطة الرسمية</button>
+      <button id="printBtn" class="btn btn-gold" type="button" disabled>طباعة الخطة</button>
+    </div>
+  </header>
+
+  <div class="notice">
+    <strong>آلية العمل:</strong>
+    اختاري حصرًا مغلقًا ومعتمد النتائج، ثم أنشئي منه مسودة الأولويات. يعرض النظام حجم العينة ودرجة الأولوية ومبرر الاختيار من البيانات الفعلية، بينما تحددين أنتِ الهدف والتدخل والمنفذ ومؤشر النجاح وقياس الأثر قبل اعتماد الخطة.
+  </div>
+
+  <div id="publishedWarning" class="notice warning hidden">
+    لا يمكن إنشاء خطة تدريبية نهائية من حصر ما زال مفتوحًا؛ أغلقي الحصر أولًا حتى تثبت نتائجه.
+  </div>
+
+  <section class="toolbar no-print">
+    <div class="field">
+      <label for="surveySelect">الحصر المعتمد</label>
+      <select id="surveySelect">
+        <option value="">جاري تحميل عمليات الحصر...</option>
+      </select>
+    </div>
+    <div>
+      <button id="buildPlanBtn" class="btn btn-primary" type="button" disabled>
+        إنشاء خطة تدريبية من النتائج
+      </button>
+    </div>
+  </section>
+
+  <section id="groupTabs" class="group-tabs hidden no-print">
+    <button type="button" class="group-tab active" data-group="teachers">
+      خطة المعلمات
+      <small id="teachersCount">0 بند</small>
+    </button>
+    <button type="button" class="group-tab" data-group="admins">
+      خطة الإداريات
+      <small id="adminsCount">0 بند</small>
+    </button>
+    <button type="button" class="group-tab" data-group="newstaff">
+      خطة المستجدات
+      <small id="newstaffCount">0 بند</small>
+    </button>
+  </section>
+
+  <section id="summarySection" class="summary hidden">
+    <article class="stat">
+      <span>العام الدراسي</span>
+      <strong id="statYear">—</strong>
+    </article>
+    <article class="stat">
+      <span>حالة الخطة</span>
+      <strong id="statStatus">—</strong>
+    </article>
+    <article class="stat">
+      <span>عدد بنود الخطة</span>
+      <strong id="statItems">0</strong>
+    </article>
+    <article class="stat">
+      <span>أعلى أولوية حالية</span>
+      <strong id="statTop">—</strong>
+    </article>
+  </section>
+
+  <section id="professionalGuide" class="section hidden">
+    <div class="section-head">
+      <div>
+        <h2>من التشخيص إلى رفع الكفاءة المهنية</h2>
+        <p>لا تعني كل نتيجة مرتفعة دورة مستقلة. يمكن دمج الاحتياجات المترابطة في تدخل مهني واحد متكامل عند التخطيط.</p>
+      </div>
+    </div>
+    <div class="notice" style="margin:0">
+      <strong>قاعدة التخطيط:</strong>
+      الأولوية تُقرأ مع حجم العينة، ثم يُختار التدخل الأنسب: ورشة تطبيقية، لقاء قصير، تبادل خبرات، دليل إرشادي، تعلم ذاتي موجه، دعم فردي أو دعم خارجي عند الحاجة. أما احتياجات المستجدات المتقاربة فيمكن تنظيمها ضمن برنامج تهيئة متكامل بدل التعامل معها كدورات منفصلة.
+    </div>
+  </section>
+
+  <section id="planSection" class="section hidden">
+    <div class="section-head">
+      <div>
+        <h2 id="planTitle">الخطة التدريبية</h2>
+        <p id="planMeta">—</p>
+      </div>
+
+      <div class="actions no-print">
+        <button id="saveAllBtn" class="btn btn-soft" type="button">حفظ التعديلات</button>
+        <button id="approvePlanBtn" class="btn btn-success" type="button">اعتماد الخطط التدريبية</button>
+      </div>
+    </div>
+
+    <div id="itemsContainer">
+      <div class="loading">جاري تحميل بنود الخطة...</div>
+    </div>
+
+    <div class="footnote">
+      ملاحظة: الأعداد والنسب والمتوسطات مأخوذة من الاستجابات الفعلية في الحصر المرتبط بالخطة ولا يتم تعديلها يدويًا. التعديلات المتاحة تخص إجراءات التخطيط والتنفيذ فقط.
+    </div>
+  </section>
+
+  <section id="officialView" class="official-view">
+    <div class="official-plan-head">
+      <h2>الخطة التدريبية لرفع الكفاءة المهنية</h2>
+      <p id="officialPlanMeta">مبنية على نتائج حصر الاحتياجات التدريبية المعتمد</p>
+    </div>
+    <div class="official-table-wrap">
+      <div id="officialPlanTable"></div>
+    </div>
+  </section>
+
+  <footer id="officialFooter" class="official-footer hidden">
+    <div>
+      <strong>إعداد</strong>
+      <span>فاتن صلاح<br>اختصاصي مصادر تعلم</span>
+    </div>
+    <div>
+      <strong>المديرة المساعدة</strong>
+      <span>خلود الكعبي</span>
+    </div>
+    <div>
+      <strong>مديرة المدرسة</strong>
+      <span>أحلام السويدي</span>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+  const sb = supabase.createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey);
+
+  let currentUser = null;
+  let surveys = [];
+  let currentSurvey = null;
+  let currentPlan = null;
+  let currentItems = [];
+  let selectedPlanGroup = "teachers";
+
+  const interventionOptions = [
+    "",
+    "ورشة تطبيقية",
+    "لقاء تدريبي قصير",
+    "تبادل خبرات وممارسات",
+    "مادة أو دليل إرشادي",
+    "تدريب إلكتروني أو تعلم ذاتي موجه",
+    "دعم فردي عند الحاجة",
+    "دعم خارجي"
+  ];
+
+  const implementationOptions = [
+    ["planned","مخطط"],
+    ["in_progress","جاري التنفيذ"],
+    ["completed","تم التنفيذ"],
+    ["cancelled","ملغى"]
+  ];
+
+  document.addEventListener("DOMContentLoaded", init);
+
+  async function init(){
+    const {data:{session},error} = await sb.auth.getSession();
+
+    if(error || !session){
+      location.href = "index.html";
+      return;
+    }
+
+    currentUser = session.user;
+
+    document.getElementById("surveySelect").addEventListener("change",onSurveyChange);
+    document.getElementById("buildPlanBtn").addEventListener("click",buildPlan);
+    document.getElementById("saveAllBtn").addEventListener("click",saveAll);
+    document.getElementById("approvePlanBtn").addEventListener("click",approvePlan);
+    document.getElementById("printBtn").addEventListener("click",()=>{ renderOfficialView(); renderPrintPlan(); window.print(); });
+    document.getElementById("editViewTopBtn").addEventListener("click",()=>setPlanView("edit"));
+    document.getElementById("officialViewTopBtn").addEventListener("click",()=>setPlanView("official"));
+
+    document.querySelectorAll(".group-tab").forEach(btn=>{
+      btn.addEventListener("click",()=>{
+        selectedPlanGroup = btn.dataset.group;
+        document.querySelectorAll(".group-tab").forEach(b=>b.classList.toggle("active",b===btn));
+        renderSummary();
+        renderItems();
+        renderOfficialView();
+        updatePrintButtonLabel();
+      });
+    });
+
+    await loadSurveys();
+  }
+
+  async function loadSurveys(){
+    const select = document.getElementById("surveySelect");
+
+    try{
+      const {data,error} = await sb
+        .from("training_needs_surveys")
+        .select("id,title,academic_year,status,created_at,updated_at")
+        .order("created_at",{ascending:false});
+
+      if(error) throw error;
+
+      surveys = data || [];
+
+      if(!surveys.length){
+        select.innerHTML = `<option value="">لا توجد عمليات حصر حتى الآن</option>`;
+        return;
+      }
+
+      const closed = surveys.filter(s=>s.status === "closed");
+      const others = surveys.filter(s=>s.status !== "closed");
+
+      let html = `<option value="">اختاري الحصر...</option>`;
+
+      if(closed.length){
+        html += `<optgroup label="حصر مغلق ومعتمد النتائج">`;
+        html += closed.map(s=>
+          `<option value="${escapeHtml(s.id)}">${escapeHtml(s.title)} — ${escapeHtml(s.academic_year || "")}</option>`
+        ).join("");
+        html += `</optgroup>`;
+      }
+
+      if(others.length){
+        html += `<optgroup label="حصر غير مغلق بعد">`;
+        html += others.map(s=>
+          `<option value="${escapeHtml(s.id)}">${escapeHtml(s.title)} — ${escapeHtml(s.academic_year || "")} (${statusArabic(s.status)})</option>`
+        ).join("");
+        html += `</optgroup>`;
+      }
+
+      select.innerHTML = html;
+
+      const params = new URLSearchParams(location.search);
+      const surveyId = params.get("survey");
+      if(surveyId && surveys.some(s=>s.id === surveyId)){
+        select.value = surveyId;
+        await onSurveyChange();
+      }
+
+    }catch(error){
+      console.error(error);
+      select.innerHTML = `<option value="">تعذر تحميل عمليات الحصر</option>`;
+    }
+  }
+
+  async function onSurveyChange(){
+    const id = document.getElementById("surveySelect").value;
+
+    currentSurvey = surveys.find(s=>s.id === id) || null;
+    currentPlan = null;
+    currentItems = [];
+
+    hidePlan();
+
+    const btn = document.getElementById("buildPlanBtn");
+    const warning = document.getElementById("publishedWarning");
+
+    if(!currentSurvey){
+      btn.disabled = true;
+      warning.classList.add("hidden");
+      return;
+    }
+
+    if(currentSurvey.status !== "closed"){
+      btn.disabled = true;
+      warning.classList.remove("hidden");
+      await loadExistingPlan(currentSurvey.id);
+      return;
+    }
+
+    warning.classList.add("hidden");
+    btn.disabled = false;
+    btn.textContent = "إنشاء خطة تدريبية من النتائج";
+
+    await loadExistingPlan(currentSurvey.id);
+  }
+
+  async function loadExistingPlan(surveyId){
+    try{
+      const {data,error} = await sb
+        .from("training_plans")
+        .select("*")
+        .eq("survey_id",surveyId)
+        .maybeSingle();
+
+      if(error) throw error;
+
+      if(!data) return;
+
+      currentPlan = data;
+      await loadPlanItems();
+
+      document.getElementById("buildPlanBtn").textContent =
+        currentPlan.status === "draft" ? "إعادة بناء المسودة من النتائج" : "الخطة موجودة ومعتمدة";
+      document.getElementById("buildPlanBtn").disabled =
+        currentPlan.status !== "draft" || currentSurvey.status !== "closed";
+
+    }catch(error){
+      console.error("Load existing plan error:",error);
+      alert("تعذر تحميل الخطة المرتبطة بهذا الحصر.");
+    }
+  }
+
+  async function buildPlan(){
+    if(!currentSurvey) return;
+
+    if(currentSurvey.status !== "closed"){
+      alert("يجب إغلاق الحصر أولًا قبل إنشاء الخطة التدريبية.");
+      return;
+    }
+
+    if(currentPlan?.status && currentPlan.status !== "draft"){
+      alert("الخطة معتمدة بالفعل ولا يمكن إعادة بنائها من النتائج.");
+      return;
+    }
+
+    const message = currentPlan
+      ? "سيتم إعادة بناء مسودة الخطة من نتائج الحصر الحالية، وستفقد التعديلات اليدوية الموجودة في المسودة. هل تريدين المتابعة؟"
+      : "سيتم إنشاء مسودة خطة تدريبية من الاحتياجات المرتفعة والمرتفعة جدًا في الحصر المعتمد. هل تريدين المتابعة؟";
+
+    if(!confirm(message)) return;
+
+    const btn = document.getElementById("buildPlanBtn");
+    const old = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "جاري إنشاء الخطة...";
+
+    try{
+      const {data,error} = await sb.rpc("create_training_plan_from_survey",{
+        p_survey_id:currentSurvey.id
+      });
+
+      if(error) throw error;
+
+      const planId = data;
+
+      const planResult = await sb
+        .from("training_plans")
+        .select("*")
+        .eq("id",planId)
+        .single();
+
+      if(planResult.error) throw planResult.error;
+
+      currentPlan = planResult.data;
+      await loadPlanItems();
+
+      alert("تم إنشاء مسودة الخطة التدريبية من النتائج الفعلية بنجاح.");
+
+    }catch(error){
+      console.error("Build plan error:",error);
+
+      const msg = String(error?.message || "");
+      if(msg.includes("SURVEY_MUST_BE_CLOSED")){
+        alert("يجب إغلاق الحصر واعتماد نتائجه أولًا.");
+      }else if(msg.includes("PLAN_ALREADY_APPROVED")){
+        alert("الخطة معتمدة بالفعل ولا يمكن إعادة بنائها.");
+      }else{
+        alert("تعذر إنشاء الخطة التدريبية.");
+      }
+
+      btn.disabled = false;
+      btn.textContent = old;
+    }
+  }
+
+  async function loadPlanItems(){
+    if(!currentPlan) return;
+
+    const {data,error} = await sb
+      .from("training_plan_items")
+      .select("*")
+      .eq("plan_id",currentPlan.id)
+      .order("sort_order",{ascending:true});
+
+    if(error){
+      console.error(error);
+      document.getElementById("itemsContainer").innerHTML =
+        `<div class="error">تعذر تحميل بنود الخطة.</div>`;
+      showPlanShell();
+      return;
+    }
+
+    currentItems = data || [];
+    updateGroupCounts();
+    ensureAvailableGroup();
+    showPlanShell();
+    renderSummary();
+    renderItems();
+    updatePrintButtonLabel();
+  }
+
+  function showPlanShell(){
+    document.getElementById("groupTabs").classList.remove("hidden");
+    document.getElementById("summarySection").classList.remove("hidden");
+    document.getElementById("professionalGuide").classList.remove("hidden");
+    document.getElementById("planSection").classList.remove("hidden");
+    document.getElementById("officialFooter").classList.remove("hidden");
+    document.getElementById("printBtn").disabled = false;
+    document.getElementById("editViewTopBtn")?.classList.toggle("active",!document.body.classList.contains("official-mode"));
+    document.getElementById("officialViewTopBtn")?.classList.toggle("active",document.body.classList.contains("official-mode"));
+
+    document.getElementById("planTitle").textContent =
+      currentPlan?.title || "الخطة التدريبية";
+
+    document.getElementById("planMeta").textContent =
+      `${currentSurvey?.title || ""} — ${currentPlan?.academic_year || currentSurvey?.academic_year || ""}`;
+
+    const locked = currentPlan?.status !== "draft";
+    document.getElementById("saveAllBtn").disabled = locked;
+    document.getElementById("approvePlanBtn").disabled = locked;
+    document.getElementById("approvePlanBtn").textContent =
+      locked ? "الخطط معتمدة ✓" : "اعتماد الخطط التدريبية";
+  }
+
+  function hidePlan(){
+    document.getElementById("groupTabs").classList.add("hidden");
+    document.getElementById("summarySection").classList.add("hidden");
+    document.getElementById("professionalGuide").classList.add("hidden");
+    document.getElementById("planSection").classList.add("hidden");
+    document.getElementById("officialFooter").classList.add("hidden");
+    document.getElementById("printBtn").disabled = true;
+  }
+
+  function renderSummary(){
+    const items = getVisibleItems();
+
+    document.getElementById("statYear").textContent =
+      currentPlan?.academic_year || currentSurvey?.academic_year || "—";
+
+    document.getElementById("statStatus").innerHTML =
+      `<span class="status-badge status-${escapeHtml(currentPlan?.status || "draft")}">${statusArabic(currentPlan?.status)}</span>`;
+
+    document.getElementById("statItems").textContent = items.length;
+
+    const top = items[0];
+    document.getElementById("statTop").textContent =
+      top ? `${formatNumber(top.high_need_percent)}%` : "—";
+
+    const groupName = planGroupTitle(selectedPlanGroup);
+    document.getElementById("planTitle").textContent =
+      `${currentPlan?.title || "الخطة التدريبية"} — ${groupName}`;
+
+    document.getElementById("planMeta").textContent =
+      `${currentSurvey?.title || ""} — ${currentPlan?.academic_year || currentSurvey?.academic_year || ""} — ${groupName}`;
+  }
+
+  function renderItems(){
+    const container = document.getElementById("itemsContainer");
+    const visibleItems = getVisibleItems();
+
+    if(!visibleItems.length){
+      container.innerHTML = `
+        <div class="empty">
+          لا توجد بنود تدريبية في هذه الفئة ضمن نتائج الحصر الحالية.
+        </div>`;
+      return;
+    }
+
+    const locked = currentPlan?.status !== "draft";
+
+    container.innerHTML = `
+      <div class="plan-cards">
+        ${visibleItems.map((item,index)=>renderPlanCard(item,index,locked)).join("")}
+      </div>
+      <div id="printPlan" class="print-plan"></div>`;
+
+    applySmartDefaults();
+    renderOfficialView();
+    renderPrintPlan();
+  }
+
+  function renderPlanCard(item,index,locked){
+    const disabled = locked ? "disabled" : "";
+    const defaults = getProfessionalDefaults(item);
+
+    return `
+      <article class="plan-card" data-id="${escapeHtml(item.id)}">
+        <div class="plan-card-head">
+          <div class="plan-card-title">
+            <span class="plan-number">${index + 1}</span>
+            <div>
+              <h3>${escapeHtml(item.need_text)}</h3>
+              <div class="plan-meta">
+                <span class="chip">${targetGroupArabic(item.target_group)}</span>
+                <span class="chip">${item.high_need_count ?? 0} من ${item.response_count ?? 0} احتياج مرتفع/مرتفع جدًا</span>
+                <span class="chip">${formatNumber(item.high_need_percent)}%</span>
+                <span class="chip">متوسط ${formatNumber(item.average_need)}/5</span>
+                <span class="chip priority-${escapeHtml(item.priority_level || "منخفضة")}">أولوية ${escapeHtml(item.priority_level || "—")}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="plan-rationale">
+          <strong>مبرر الاختيار:</strong>
+          ${escapeHtml(item.rationale || buildRationale(item))}
+        </div>
+
+        <div class="plan-form-grid">
+          <div class="plan-field wide">
+            <label>النتيجة المهنية المتوقعة / الهدف التدريبي</label>
+            <textarea data-field="training_goal" ${disabled}>${escapeHtml(item.training_goal || defaults.goal)}</textarea>
+          </div>
+
+          <div class="plan-field">
+            <label>نوع التدخل</label>
+            <select data-field="intervention_type" ${disabled}>
+              ${interventionOptions.map(opt=>
+                `<option value="${escapeHtml(opt)}" ${(item.intervention_type || defaults.intervention)===opt?"selected":""}>${escapeHtml(opt || "اختاري...")}</option>`
+              ).join("")}
+            </select>
+          </div>
+
+          <div class="plan-field">
+            <label>المنفذ المقترح</label>
+            <input data-field="trainer_name" type="text"
+              value="${escapeHtml(item.trainer_name || "")}"
+              placeholder="يحدد بعد المراجعة" ${disabled}>
+          </div>
+
+          <div class="plan-field">
+            <label>الفترة المخططة</label>
+            <input data-field="planned_period" type="text"
+              value="${escapeHtml(item.planned_period || "")}"
+              placeholder="مثال: أكتوبر 2026" ${disabled}>
+          </div>
+
+          <div class="plan-field">
+            <label>التاريخ المقترح</label>
+            <input data-field="proposed_date" type="date"
+              value="${escapeHtml(item.proposed_date || "")}" ${disabled}>
+          </div>
+
+          <div class="plan-field wide">
+            <label>مؤشر النجاح المقترح</label>
+            <textarea data-field="success_indicator" ${disabled}>${escapeHtml(item.success_indicator || defaults.indicator)}</textarea>
+          </div>
+
+          <div class="plan-field wide">
+            <label>أداة قياس الأثر المقترحة</label>
+            <textarea data-field="impact_measure" ${disabled}>${escapeHtml(item.impact_measure || defaults.impact)}</textarea>
+          </div>
+
+          <div class="plan-field">
+            <label>حالة التنفيذ</label>
+            <select data-field="implementation_status" ${disabled}>
+              ${implementationOptions.map(([value,label])=>
+                `<option value="${value}" ${String(item.implementation_status || "planned")===value?"selected":""}>${label}</option>`
+              ).join("")}
+            </select>
+          </div>
+
+          <div class="plan-field wide">
+            <label>الشواهد بعد التنفيذ</label>
+            <textarea data-field="evidence" placeholder="تستكمل بعد التنفيذ" ${disabled}>${escapeHtml(item.evidence || "")}</textarea>
+          </div>
+
+          <div class="plan-field wide">
+            <label>ملاحظات</label>
+            <textarea data-field="notes" placeholder="ملاحظات التخطيط أو المتابعة" ${disabled}>${escapeHtml(item.notes || "")}</textarea>
+          </div>
+        </div>
+
+        <div class="plan-card-actions no-print">
+          <button class="btn btn-danger btn-sm" type="button"
+            onclick="removeItem('${item.id}')" ${disabled}>
+            استبعاد من الخطة
+          </button>
+        </div>
+      </article>`;
+  }
+
+  async function saveAll(showAlert=true){
+    if(!currentPlan || currentPlan.status !== "draft"){
+      if(showAlert) alert("الخطة معتمدة ولا يمكن تعديلها.");
+      return false;
+    }
+
+    const rows = [...document.querySelectorAll(".plan-card[data-id]")];
+
+    try{
+      for(const row of rows){
+        const id = row.dataset.id;
+        const payload = {};
+
+        row.querySelectorAll("[data-field]").forEach(el=>{
+          let value = el.value.trim();
+          payload[el.dataset.field] = value || null;
+        });
+
+        payload.implementation_status =
+          payload.implementation_status || "planned";
+        payload.updated_at = new Date().toISOString();
+
+        const {error} = await sb
+          .from("training_plan_items")
+          .update(payload)
+          .eq("id",id);
+
+        if(error) throw error;
+      }
+
+      await loadPlanItems();
+      renderOfficialView();
+
+      if(showAlert) alert("تم حفظ تعديلات الخطة بنجاح.");
+      return true;
+
+    }catch(error){
+      console.error("Save plan error:",error);
+      alert("تعذر حفظ بعض تعديلات الخطة.");
+      return false;
+    }
+  }
+
+  async function removeItem(itemId){
+    if(!currentPlan || currentPlan.status !== "draft") return;
+
+    const item = currentItems.find(i=>i.id===itemId);
+    if(!item) return;
+
+    const ok = confirm(
+      `هل تريدين استبعاد هذا الاحتياج من الخطة الحالية؟\n\n${item.need_text}\n\nلن يتم حذف نتيجة الحصر الأصلية.`
+    );
+    if(!ok) return;
+
+    try{
+      const {error} = await sb
+        .from("training_plan_items")
+        .delete()
+        .eq("id",itemId);
+
+      if(error) throw error;
+
+      currentItems = currentItems.filter(i=>i.id!==itemId);
+      renderSummary();
+      renderItems();
+
+    }catch(error){
+      console.error(error);
+      alert("تعذر حذف البند من الخطة.");
+    }
+  }
+
+  async function approvePlan(){
+    if(!currentPlan || currentPlan.status !== "draft") return;
+
+    if(!currentItems.length){
+      alert("لا يمكن اعتماد خطة لا تحتوي على بنود.");
+      return;
+    }
+
+    const saved = await saveAll(false);
+    if(!saved) return;
+
+    const currentRows = [...document.querySelectorAll(".plan-card[data-id]")];
+
+    const requiredFields = [
+      ["training_goal","الهدف التدريبي"],
+      ["intervention_type","نوع التدخل"],
+      ["success_indicator","مؤشر النجاح"],
+      ["impact_measure","أداة قياس الأثر"]
+    ];
+
+    for(const [field,label] of requiredFields){
+      const missing = currentRows.some(row=>
+        !(row.querySelector(`[data-field="${field}"]`)?.value || "").trim()
+      );
+      if(missing){
+        alert(`قبل اعتماد الخطة، استكملي «${label}» لكل بند تدريبي.`);
+        return;
+      }
+    }
+
+    const ok = confirm(
+      "هل تريدين اعتماد الخطة التدريبية؟\n\nبعد الاعتماد ستصبح الخطة ثابتة ولن تُعاد بناؤها تلقائيًا من نتائج الحصر."
+    );
+    if(!ok) return;
+
+    const btn = document.getElementById("approvePlanBtn");
+    btn.disabled = true;
+    btn.textContent = "جاري الاعتماد...";
+
+    try{
+      const {error} = await sb.rpc("approve_training_plan",{
+        p_plan_id:currentPlan.id
+      });
+
+      if(error) throw error;
+
+      const {data,error:reloadError} = await sb
+        .from("training_plans")
+        .select("*")
+        .eq("id",currentPlan.id)
+        .single();
+
+      if(reloadError) throw reloadError;
+
+      currentPlan = data;
+      await loadPlanItems();
+
+      document.getElementById("buildPlanBtn").disabled = true;
+      document.getElementById("buildPlanBtn").textContent = "الخطة موجودة ومعتمدة";
+
+      alert("تم اعتماد الخطة التدريبية بنجاح.");
+
+    }catch(error){
+      console.error("Approve plan error:",error);
+      alert("تعذر اعتماد الخطة التدريبية.");
+      btn.disabled = false;
+      btn.textContent = "اعتماد الخطط التدريبية";
+    }
+  }
+
+  function planGroupKey(item){
+    if(item?.plan_group) return item.plan_group;
+    const group = targetGroupArabic(item?.target_group);
+    if(group === "المستجدات") return "newstaff";
+    if(group === "الإداريات") return "admins";
+    return "teachers";
+  }
+
+  function getVisibleItems(){
+    return currentItems.filter(item=>planGroupKey(item) === selectedPlanGroup);
+  }
+
+  function planGroupTitle(key){
+    if(key === "admins") return "الخطة التدريبية للإداريات";
+    if(key === "newstaff") return "الخطة التدريبية للمستجدات";
+    return "الخطة التدريبية للمعلمات";
+  }
+
+  function updateGroupCounts(){
+    const counts = {
+      teachers: currentItems.filter(x=>planGroupKey(x)==="teachers").length,
+      admins: currentItems.filter(x=>planGroupKey(x)==="admins").length,
+      newstaff: currentItems.filter(x=>planGroupKey(x)==="newstaff").length
+    };
+    document.getElementById("teachersCount").textContent = `${counts.teachers} بند`;
+    document.getElementById("adminsCount").textContent = `${counts.admins} بند`;
+    document.getElementById("newstaffCount").textContent = `${counts.newstaff} بند`;
+  }
+
+  function ensureAvailableGroup(){
+    const order=["teachers","admins","newstaff"];
+    if(getVisibleItems().length) return;
+    const next=order.find(k=>currentItems.some(x=>planGroupKey(x)===k));
+    if(next) selectedPlanGroup=next;
+    document.querySelectorAll(".group-tab").forEach(btn=>{
+      btn.classList.toggle("active",btn.dataset.group===selectedPlanGroup);
+    });
+  }
+
+  function updatePrintButtonLabel(){
+    const btn=document.getElementById("printBtn");
+    if(btn) btn.textContent=`طباعة ${planGroupTitle(selectedPlanGroup)}`;
+  }
+
+  function getProfessionalDefaults(item){
+    const n = String(item.need_text || "");
+    const group = targetGroupArabic(item.target_group);
+
+    const result = {
+      goal: `أن تتمكن الفئة المستهدفة من تطوير ممارساتها في مجال «${n}» وتوظيفها بصورة مناسبة في العمل.`,
+      indicator: `ظهور تطبيق عملي للممارسات المستهدفة في مجال «${n}» بعد تنفيذ التدخل المهني.`,
+      impact: `متابعة تطبيقية بعد التنفيذ، مع جمع شاهد مناسب ومقارنة مستوى التطبيق قبل التدخل وبعده.`,
+      intervention: "لقاء تدريبي قصير"
+    };
+
+    const rules = [
+      {
+        keys:["تنويع أساليب وأدوات التقويم","أساليب وأدوات التقويم"],
+        goal:"أن تتمكن المعلمات من توظيف أساليب وأدوات تقويم متنوعة وملائمة لنواتج التعلم واحتياجات الطلبة.",
+        indicator:"توظيف المعلمات أكثر من أداة تقويم مناسبة في التخطيط والممارسة الصفية مع الاستفادة من نتائجها.",
+        impact:"مراجعة عينة من أدوات التقويم والتخطيط، ثم متابعة تطبيقها في زيارة أو متابعة لاحقة.",
+        intervention:"ورشة تطبيقية"
+      },
+      {
+        keys:["تحليل نتائج الطلبة"],
+        goal:"أن تتمكن المعلمات من تحليل نتائج الطلبة وتحديد جوانب القوة والاحتياجات التعليمية واتخاذ إجراءات مناسبة بناءً عليها.",
+        indicator:"وجود تحليل واضح للنتائج يحدد الاحتياجات ويترجم إلى إجراءات تعليمية قابلة للتنفيذ.",
+        impact:"مراجعة نموذج تحليل نتائج وعينة من الإجراءات الناتجة عنه، ثم متابعة أثرها على تعلم الطلبة.",
+        intervention:"ورشة تطبيقية"
+      },
+      {
+        keys:["الإجراءات العلاجية والإثرائية"],
+        goal:"أن تتمكن المعلمات من تخطيط وتنفيذ إجراءات علاجية وإثرائية تستند إلى نتائج الطلبة واحتياجاتهم الفعلية.",
+        indicator:"إعداد وتنفيذ إجراءات علاجية أو إثرائية مرتبطة بنتائج التحليل ومناسبة للفئات المستهدفة.",
+        impact:"مراجعة خطط أو أنشطة علاجية وإثرائية ومتابعة تنفيذها وقراءة نتائج الطلبة اللاحقة.",
+        intervention:"ورشة تطبيقية"
+      },
+      {
+        keys:["استراتيجيات تعليم وتعلم"],
+        goal:"أن توسع المعلمات استخدامهن لاستراتيجيات تعليم وتعلم متنوعة وفاعلة بما يتناسب مع أهداف الدرس واحتياجات الطلبة.",
+        indicator:"ظهور توظيف مقصود لاستراتيجيات متنوعة في التخطيط والممارسة الصفية.",
+        impact:"متابعة التخطيط وزيارة صفية لاحقة أو تبادل ممارسات لرصد التطبيق.",
+        intervention:"تبادل خبرات وممارسات"
+      },
+      {
+        keys:["التمايز","الفروق الفردية"],
+        goal:"أن تتمكن المعلمات من تصميم تعلم متمايز يراعي الفروق الفردية ومستويات الطلبة المختلفة.",
+        indicator:"ظهور أنشطة أو مهام متدرجة ومناسبة لاختلاف مستويات الطلبة.",
+        impact:"مراجعة عينة من التخطيط والأنشطة ثم متابعة تطبيق التمايز في الممارسة.",
+        intervention:"ورشة تطبيقية"
+      },
+      {
+        keys:["أنشطة تعليمية تفاعلية","أنشطة تعليمية تفاعلية ومحفزة"],
+        goal:"أن تتمكن المعلمات من تصميم أنشطة تعليمية تفاعلية ومحفزة تعزز مشاركة الطلبة في التعلم.",
+        indicator:"تضمين أنشطة تفاعلية واضحة في التخطيط وارتفاع مشاركة الطلبة أثناء التطبيق.",
+        impact:"مراجعة نماذج الأنشطة ومتابعة تطبيقها في موقف تعليمي لاحق.",
+        intervention:"تبادل خبرات وممارسات"
+      },
+      {
+        keys:["التفكير العليا"],
+        goal:"أن تتمكن المعلمات من توظيف أسئلة وأنشطة تنمي مهارات التفكير العليا لدى الطلبة.",
+        indicator:"ظهور أسئلة ومهام تتطلب التحليل والتفسير والتقويم أو الإبداع في الممارسات التعليمية.",
+        impact:"تحليل عينة من الأسئلة والأنشطة ومتابعة استجابات الطلبة في تطبيق لاحق.",
+        intervention:"ورشة تطبيقية"
+      },
+      {
+        keys:["دافعية الطلبة","مشاركتهم في التعلم"],
+        goal:"أن تطور المعلمات ممارسات ترفع دافعية الطلبة وتعزز مشاركتهم الفاعلة في التعلم.",
+        indicator:"زيادة تنوع فرص المشاركة وظهور مشاركة أوسع للطلبة في الموقف التعليمي.",
+        impact:"ملاحظة صفية لاحقة ومراجعة الأنشطة المستخدمة مع تغذية راجعة قصيرة.",
+        intervention:"تبادل خبرات وممارسات"
+      },
+      {
+        keys:["البيئة الصفية","السلوكيات الصفية"],
+        goal:"أن تعزز المعلمات ممارسات إدارة البيئة الصفية والتعامل التربوي الفاعل مع السلوكيات الصفية.",
+        indicator:"تطبيق إجراءات صفية واضحة تدعم الانضباط الإيجابي واستمرارية التعلم.",
+        impact:"متابعة صفية لاحقة ورصد التغير في إدارة الموقف والسلوكيات.",
+        intervention:"لقاء تدريبي قصير"
+      },
+      {
+        keys:["الأدوات والمنصات الرقمية"],
+        goal:"أن تتمكن المعلمات من توظيف الأدوات والمنصات الرقمية بصورة هادفة لدعم التعليم والتعلم.",
+        indicator:"استخدام أداة أو منصة رقمية بصورة مرتبطة بهدف تعليمي واضح.",
+        impact:"عرض تطبيق عملي أو منتج رقمي ومتابعة توظيفه في موقف تعليمي.",
+        intervention:"ورشة تطبيقية"
+      },
+      {
+        keys:["موارد تعليمية رقمية"],
+        goal:"أن تتمكن المعلمات من تصميم وإنتاج موارد تعليمية رقمية مناسبة للأهداف التعليمية وخصائص الطلبة.",
+        indicator:"إنتاج مورد رقمي قابل للاستخدام يحقق هدفًا تعليميًا محددًا.",
+        impact:"مراجعة المنتج الرقمي ومتابعة استخدامه وجمع تغذية راجعة على فاعليته.",
+        intervention:"ورشة تطبيقية"
+      },
+      {
+        keys:["الذكاء الاصطناعي"],
+        goal:"أن تتمكن المعلمات من توظيف أدوات الذكاء الاصطناعي في التخطيط وإعداد الأنشطة والموارد بصورة مهنية وآمنة.",
+        indicator:"إنتاج نموذج تطبيقي يستخدم الذكاء الاصطناعي مع مراعاة الدقة والخصوصية والاستخدام المسؤول.",
+        impact:"مراجعة منتج تطبيقي وقائمة تحقق للاستخدام المهني والآمن ثم متابعة التوظيف الفعلي.",
+        intervention:"ورشة تطبيقية"
+      },
+      {
+        keys:["Microsoft Word"],
+        goal:"أن تتمكن الإداريات من إعداد وتنسيق المستندات والخطابات والجداول بكفاءة باستخدام Microsoft Word.",
+        indicator:"إنجاز مستند وظيفي منسق بصورة صحيحة ومستقلة.",
+        impact:"مهمة تطبيقية قبل/بعد التدريب ومراجعة نموذج من العمل الفعلي.",
+        intervention:"ورشة تطبيقية"
+      },
+      {
+        keys:["Microsoft Excel"],
+        goal:"أن تتمكن الإداريات من تنظيم البيانات واستخدام الجداول والفرز والتصفية والمعادلات الأساسية في Microsoft Excel.",
+        indicator:"إنجاز ملف بيانات منظم يتضمن الوظائف الأساسية المستهدفة.",
+        impact:"مهمة تطبيقية عملية ومراجعة ملف منجز بعد التدريب.",
+        intervention:"ورشة تطبيقية"
+      },
+      {
+        keys:["Microsoft PowerPoint"],
+        goal:"أن تتمكن الإداريات من إعداد عروض تقديمية منظمة وواضحة باستخدام Microsoft PowerPoint.",
+        indicator:"إنتاج عرض قصير منظم يطبق المهارات الأساسية المستهدفة.",
+        impact:"تقييم منتج تطبيقي وفق قائمة تحقق مختصرة.",
+        intervention:"ورشة تطبيقية"
+      },
+      {
+        keys:["Microsoft Forms"],
+        goal:"أن تتمكن الإداريات من إنشاء النماذج الإلكترونية وجمع البيانات الأساسية باستخدام Microsoft Forms.",
+        indicator:"إنشاء نموذج إلكتروني صالح للاستخدام واستعراض استجاباته.",
+        impact:"مهمة تطبيقية مباشرة ومراجعة النموذج المنتج.",
+        intervention:"ورشة تطبيقية"
+      },
+      {
+        keys:["Teams","SharePoint"],
+        goal:"أن تتمكن الإداريات من الوصول إلى الملفات ومشاركتها وتنظيمها عبر Teams وSharePoint وفق احتياجات العمل.",
+        indicator:"تنفيذ مهمة عملية تتضمن الوصول لملف ومشاركته وتنظيمه بصورة صحيحة.",
+        impact:"مهمة أداء عملية ومتابعة الاستخدام في العمل اليومي.",
+        intervention:"لقاء تدريبي قصير"
+      },
+      {
+        keys:["إدارة الملفات والمجلدات"],
+        goal:"أن تتمكن الإداريات من تنظيم الملفات والمجلدات وحفظها وتسميتها واسترجاعها بصورة أكثر كفاءة.",
+        indicator:"تطبيق بنية تنظيم واضحة للملفات مع سهولة الوصول والاسترجاع.",
+        impact:"مراجعة عينة من تنظيم الملفات قبل التدخل وبعده.",
+        intervention:"لقاء تدريبي قصير"
+      },
+      {
+        keys:["PDF","المسح الضوئي","الطباعة"],
+        goal:"أن تتمكن الإداريات من إنشاء ملفات PDF وتحويلها ودمجها ومسح الوثائق وطباعتها وفق متطلبات العمل.",
+        indicator:"إنجاز مجموعة مهام عملية في التحويل والدمج والمسح والطباعة بصورة صحيحة.",
+        impact:"قائمة تحقق لمهمة أداء عملية أثناء/بعد التدريب.",
+        intervention:"لقاء تدريبي قصير"
+      },
+      {
+        keys:["البريد الإلكتروني","المراسلات الإلكترونية"],
+        goal:"أن تتمكن الإداريات من إدارة المراسلات الإلكترونية وإرسال الملفات وتنظيم الرسائل بكفاءة.",
+        indicator:"تنفيذ مراسلة إلكترونية صحيحة مع إرفاق وتنظيم الملفات والرسائل.",
+        impact:"مهمة تطبيقية ومتابعة الاستخدام في العمل اليومي.",
+        intervention:"لقاء تدريبي قصير"
+      },
+      {
+        keys:["أرشفة المستندات","السجلات إلكترونيًا"],
+        goal:"أن تتمكن الإداريات من تنظيم وأرشفة المستندات والسجلات إلكترونيًا وفق آلية واضحة تسهل الاسترجاع.",
+        indicator:"وجود تنظيم إلكتروني واضح لعينة من المستندات والسجلات وسهولة استرجاعها.",
+        impact:"مراجعة عينة قبل/بعد ومتابعة الالتزام بالآلية المتفق عليها.",
+        intervention:"لقاء تدريبي قصير"
+      },
+      {
+        keys:["إدارة الوقت","المهام والأولويات"],
+        goal:"أن تطور الإداريات أساليب عملية لتنظيم الوقت والمهام وترتيب الأولويات بما يدعم كفاءة الإنجاز.",
+        indicator:"استخدام أداة أو آلية واضحة لتنظيم المهام والأولويات خلال فترة المتابعة.",
+        impact:"متابعة قصيرة بعد التطبيق ومراجعة أداة تنظيم المهام المستخدمة.",
+        intervention:"لقاء تدريبي قصير"
+      }
+    ];
+
+    if(group === "المستجدات" || n.includes("التعرف على")){
+      result.goal = `أن تتعرف المستجدات على «${n.replace(/^التعرف على\s*/,"")}» بما يدعم سرعة اندماجهن وأداء مهامهن وفق الإجراءات المعتمدة في المدرسة.`;
+      result.indicator = "قدرة المستجدات على تحديد الإجراء أو الجهة أو المصدر المناسب والتعامل معه بصورة صحيحة عند الحاجة.";
+      result.impact = "قائمة تحقق للتهيئة، وأسئلة تحقق قصيرة، ومتابعة تطبيقية خلال فترة الاستقرار الوظيفي.";
+      result.intervention = "لقاء تدريبي قصير";
+    }
+
+    for(const rule of rules){
+      if(rule.keys.some(k=>n.includes(k))){
+        result.goal = rule.goal;
+        result.indicator = rule.indicator;
+        result.impact = rule.impact;
+        result.intervention = rule.intervention;
+        break;
+      }
+    }
+    return result;
+  }
+
+  function applySmartDefaults(){
+    if(currentPlan?.status !== "draft") return;
+    document.querySelectorAll(".plan-card[data-id]").forEach(card=>{
+      const item = currentItems.find(x=>x.id===card.dataset.id);
+      if(!item) return;
+      const d = getProfessionalDefaults(item);
+      const pairs = {
+        training_goal:d.goal,
+        success_indicator:d.indicator,
+        impact_measure:d.impact
+      };
+      for(const [field,value] of Object.entries(pairs)){
+        const el=card.querySelector(`[data-field="${field}"]`);
+        if(el && !el.value.trim()) el.value=value;
+      }
+      const intervention=card.querySelector('[data-field="intervention_type"]');
+      if(intervention && !intervention.value) intervention.value=d.intervention;
+    });
+  }
+
+  function setPlanView(mode){
+    const official = mode === "official";
+    document.body.classList.toggle("official-mode",official);
+    document.getElementById("editViewTopBtn")?.classList.toggle("active",!official);
+    document.getElementById("officialViewTopBtn")?.classList.toggle("active",official);
+    if(official) renderOfficialView();
+    window.scrollTo({top:0,behavior:"smooth"});
+  }
+
+  function renderOfficialView(){
+    const box=document.getElementById("officialPlanTable");
+    if(!box || !getVisibleItems().length) return;
+
+    const meta=document.getElementById("officialPlanMeta");
+    if(meta){
+      meta.textContent=`${planGroupTitle(selectedPlanGroup)} — ${currentSurvey?.title || "حصر الاحتياجات التدريبية"} — ${currentPlan?.academic_year || currentSurvey?.academic_year || ""}`;
+    }
+    const officialTitle=document.querySelector(".official-plan-head h2");
+    if(officialTitle){
+      officialTitle.textContent=planGroupTitle(selectedPlanGroup);
+
+    }
+
+    const cards=[...document.querySelectorAll(".plan-card[data-id]")];
+    const rows=cards.map((card,index)=>{
+      const item=currentItems.find(x=>x.id===card.dataset.id);
+      if(!item) return "";
+      const val=f=>(card.querySelector(`[data-field="${f}"]`)?.value || "").trim();
+      const statusLabel=implementationOptions.find(x=>x[0]===val("implementation_status"))?.[1] || "مخطط";
+      return `<tr>
+        <td style="text-align:center">${index+1}</td>
+        <td><strong>${escapeHtml(item.need_text)}</strong><br>
+          <span style="color:#6c7d7f">${item.high_need_count} من ${item.response_count} — ${formatNumber(item.high_need_percent)}% — متوسط ${formatNumber(item.average_need)}/5 — أولوية ${escapeHtml(item.priority_level||"—")}</span>
+        </td>
+        <td>${targetGroupArabic(item.target_group)}</td>
+        <td>${escapeHtml(val("training_goal"))}</td>
+        <td>${escapeHtml(val("intervention_type"))}</td>
+        <td>${escapeHtml(val("trainer_name") || "يحدد لاحقًا")}</td>
+        <td>${escapeHtml(val("planned_period") || val("proposed_date") || "يحدد لاحقًا")}</td>
+        <td>${escapeHtml(val("success_indicator"))}</td>
+        <td>${escapeHtml(val("impact_measure"))}</td>
+        <td>${escapeHtml(statusLabel)}</td>
+      </tr>`;
+    }).join("");
+
+    box.innerHTML=`<table class="official-table">
+      <thead><tr>
+        <th>#</th>
+        <th>الأولوية التدريبية ومؤشر الحاجة</th>
+        <th>الفئة المستهدفة</th>
+        <th>النتيجة المهنية المتوقعة</th>
+        <th>نوع التدخل</th>
+        <th>المنفذ</th>
+        <th>الفترة</th>
+        <th>مؤشر النجاح</th>
+        <th>قياس الأثر</th>
+        <th>الحالة</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+
+  function renderPrintPlan(){
+    const box=document.getElementById("printPlan");
+    if(!box || !getVisibleItems().length) return;
+    const cards=[...document.querySelectorAll(".plan-card[data-id]")];
+    const rows=cards.map((card,index)=>{
+      const item=currentItems.find(x=>x.id===card.dataset.id);
+      if(!item) return "";
+      const val=f=>(card.querySelector(`[data-field="${f}"]`)?.value || "").trim();
+      return `<tr>
+        <td>${index+1}</td>
+        <td><strong>${escapeHtml(item.need_text)}</strong><br><small>${item.high_need_count} من ${item.response_count} — ${formatNumber(item.high_need_percent)}% — متوسط ${formatNumber(item.average_need)}/5 — أولوية ${escapeHtml(item.priority_level||"—")}</small></td>
+        <td>${targetGroupArabic(item.target_group)}</td>
+        <td>${escapeHtml(val("training_goal"))}</td>
+        <td>${escapeHtml(val("intervention_type"))}</td>
+        <td>${escapeHtml(val("trainer_name") || "—")}</td>
+        <td>${escapeHtml(val("planned_period") || val("proposed_date") || "—")}</td>
+        <td>${escapeHtml(val("success_indicator"))}</td>
+        <td>${escapeHtml(val("impact_measure"))}</td>
+        <td>${escapeHtml(implementationOptions.find(x=>x[0]===val("implementation_status"))?.[1] || "مخطط")}</td>
+      </tr>`;
+    }).join("");
+
+    box.innerHTML=`<table class="print-table">
+      <thead><tr>
+        <th style="width:3%">#</th>
+        <th style="width:18%">الأولوية التدريبية ومبررها الرقمي</th>
+        <th style="width:7%">الفئة</th>
+        <th style="width:18%">النتيجة المهنية المتوقعة</th>
+        <th style="width:9%">التدخل</th>
+        <th style="width:8%">المنفذ</th>
+        <th style="width:8%">الفترة</th>
+        <th style="width:13%">مؤشر النجاح</th>
+        <th style="width:13%">قياس الأثر</th>
+        <th style="width:6%">الحالة</th>
+      </tr></thead><tbody>${rows}</tbody>
+    </table>`;
+  }
+
+  function buildRationale(item){
+    return `ظهر الاحتياج لدى ${item.high_need_count ?? 0} من أصل ${item.response_count ?? 0} استجابة، بنسبة ${formatNumber(item.high_need_percent)}%، وبمتوسط ${formatNumber(item.average_need)} من 5.`;
+  }
+
+  function statusArabic(status){
+    return status === "published" ? "منشور" :
+           status === "closed" ? "مغلق" :
+           status === "approved" ? "معتمدة" :
+           status === "draft" ? "مسودة" :
+           "—";
+  }
+
+  function targetGroupArabic(value){
+    const v = String(value || "").trim();
+    if(v === "المعلمات" || v === "teacher" || v === "teachers") return "المعلمات";
+    if(v === "الإداريات" || v === "admin" || v === "administrative") return "الإداريات";
+    if(v === "المستجدات" || v === "new_staff") return "المستجدات";
+    return escapeHtml(v || "—");
+  }
+
+  function formatNumber(value){
+    const n = Number(value);
+    if(!Number.isFinite(n)) return "0";
+    return n.toLocaleString("ar-BH",{maximumFractionDigits:2});
+  }
+
+  function escapeHtml(value){
+    return String(value ?? "")
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+</script>
+</body>
+</html>

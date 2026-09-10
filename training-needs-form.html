@@ -1,0 +1,865 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>حصر الاحتياجات التدريبية</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+
+  <style>
+    *{box-sizing:border-box}
+    :root{
+      --primary:#0e4b4d;
+      --primary-dark:#08393b;
+      --primary-soft:#edf6f4;
+      --gold:#b9964c;
+      --gold-soft:#fbf7ed;
+      --bg:#f2f6f5;
+      --card:#fff;
+      --text:#173f42;
+      --muted:#6c7d7f;
+      --border:#d8e3e1;
+      --danger:#a94442;
+      --success:#287348;
+      --shadow:0 14px 38px rgba(10,57,59,.08);
+    }
+
+    html{scroll-behavior:smooth}
+    body{
+      margin:0;
+      font-family:Tahoma,Arial,sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(circle at 12% 8%,rgba(185,150,76,.10),transparent 25%),
+        radial-gradient(circle at 88% 15%,rgba(14,75,77,.08),transparent 28%),
+        linear-gradient(135deg,#eef5f3,#fbfaf6 50%,#eef4f2);
+      min-height:100vh;
+    }
+
+    button,input,select,textarea{font:inherit}
+    button{cursor:pointer}
+    button:disabled{opacity:.55;cursor:not-allowed}
+    .hidden{display:none!important}
+
+    .page{
+      width:min(940px,calc(100% - 24px));
+      margin:20px auto 50px;
+    }
+
+    .school-header{
+      background:#fff;
+      border:1px solid rgba(14,75,77,.14);
+      border-radius:18px;
+      overflow:hidden;
+      box-shadow:var(--shadow);
+      margin-bottom:14px;
+    }
+
+    .school-header img{
+      display:block;
+      width:100%;
+      max-height:150px;
+      object-fit:contain;
+      background:#fff;
+    }
+
+    .hero{
+      background:#fff;
+      border:1px solid rgba(14,75,77,.15);
+      border-radius:20px;
+      box-shadow:var(--shadow);
+      padding:24px 24px 20px;
+      position:relative;
+      overflow:hidden;
+    }
+
+    .hero::before{
+      content:"";
+      position:absolute;
+      top:0;right:0;left:0;height:5px;
+      background:linear-gradient(90deg,var(--primary-dark),var(--gold),var(--primary));
+    }
+
+    .hero h1{
+      margin:0 0 8px;
+      color:var(--primary-dark);
+      font-size:1.65rem;
+      line-height:1.5;
+    }
+
+    .hero .year{
+      display:inline-flex;
+      align-items:center;
+      padding:6px 10px;
+      border-radius:999px;
+      background:var(--gold-soft);
+      color:#725b2c;
+      font-size:.76rem;
+      font-weight:700;
+      margin-bottom:12px;
+    }
+
+    .hero p{
+      margin:0;
+      color:var(--muted);
+      line-height:1.9;
+      font-size:.88rem;
+    }
+
+    .notice{
+      margin-top:16px;
+      padding:12px 14px;
+      border-radius:12px;
+      background:var(--primary-soft);
+      border:1px solid #d5e8e3;
+      color:var(--primary-dark);
+      line-height:1.8;
+      font-size:.8rem;
+    }
+
+    .card{
+      margin-top:14px;
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:18px;
+      box-shadow:var(--shadow);
+      padding:20px;
+    }
+
+    .section-title{
+      margin:0 0 6px;
+      color:var(--primary-dark);
+      font-size:1.08rem;
+    }
+
+    .section-desc{
+      margin:0 0 17px;
+      color:var(--muted);
+      font-size:.8rem;
+      line-height:1.8;
+    }
+
+    .field{margin-bottom:15px}
+    .field:last-child{margin-bottom:0}
+    .field label.main-label{
+      display:block;
+      font-size:.82rem;
+      font-weight:700;
+      margin-bottom:7px;
+      color:var(--text);
+    }
+
+    .required{color:var(--danger)}
+
+    input[type="text"],select,textarea{
+      width:100%;
+      border:1px solid #cfddda;
+      border-radius:10px;
+      padding:11px 12px;
+      outline:none;
+      background:#fff;
+      color:var(--text);
+      transition:.15s ease;
+    }
+
+    input[type="text"]:focus,select:focus,textarea:focus{
+      border-color:var(--primary);
+      box-shadow:0 0 0 3px rgba(14,75,77,.07);
+    }
+
+    textarea{min-height:95px;resize:vertical}
+
+    .choice-row{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:10px;
+    }
+
+    .choice-card{
+      position:relative;
+      display:flex;
+      align-items:center;
+      gap:9px;
+      border:1px solid var(--border);
+      border-radius:11px;
+      padding:11px 12px;
+      background:#fff;
+      cursor:pointer;
+      transition:.15s ease;
+      font-size:.82rem;
+    }
+
+    .choice-card:hover{
+      border-color:#9dbbb5;
+      background:#fbfdfc;
+    }
+
+    .choice-card input{accent-color:var(--primary)}
+    .choice-card:has(input:checked){
+      border-color:var(--primary);
+      background:var(--primary-soft);
+      font-weight:700;
+    }
+
+    .needs-wrap{display:grid;gap:12px}
+
+    .need-card{
+      border:1px solid var(--border);
+      border-radius:14px;
+      background:linear-gradient(135deg,#fff,#fbfdfc);
+      padding:15px;
+    }
+
+    .need-title{
+      margin:0 0 12px;
+      font-size:.84rem;
+      line-height:1.8;
+      font-weight:700;
+      color:var(--text);
+    }
+
+    .scale{
+      display:grid;
+      grid-template-columns:repeat(5,minmax(0,1fr));
+      gap:7px;
+    }
+
+    .scale label{
+      position:relative;
+      border:1px solid var(--border);
+      border-radius:10px;
+      padding:9px 6px;
+      text-align:center;
+      cursor:pointer;
+      background:#fff;
+      min-height:62px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:4px;
+      transition:.15s ease;
+    }
+
+    .scale label:hover{border-color:#9dbbb5}
+    .scale input{position:absolute;opacity:0;pointer-events:none}
+
+    .scale strong{
+      font-size:.82rem;
+      color:var(--primary-dark);
+    }
+
+    .scale span{
+      font-size:.64rem;
+      color:var(--muted);
+      line-height:1.35;
+    }
+
+    .scale label:has(input:checked){
+      border-color:var(--primary);
+      background:var(--primary-soft);
+      box-shadow:0 0 0 2px rgba(14,75,77,.05);
+    }
+
+    .group-heading{
+      display:flex;
+      align-items:center;
+      gap:9px;
+      margin:3px 0 12px;
+      padding-bottom:9px;
+      border-bottom:1px solid #edf1f0;
+    }
+
+    .group-heading .dot{
+      width:9px;height:9px;border-radius:50%;
+      background:var(--gold);
+      flex:0 0 auto;
+    }
+
+    .group-heading h3{
+      margin:0;
+      font-size:.94rem;
+      color:var(--primary-dark);
+    }
+
+    .message{
+      border-radius:11px;
+      padding:11px 13px;
+      margin:14px 0 0;
+      font-size:.8rem;
+      font-weight:700;
+      line-height:1.7;
+    }
+
+    .message.error{
+      background:#fff3f3;
+      border:1px solid #efd2cf;
+      color:var(--danger);
+    }
+
+    .message.success{
+      background:#edf8f1;
+      border:1px solid #cfe7d7;
+      color:var(--success);
+    }
+
+    .submit-wrap{
+      margin-top:16px;
+      display:flex;
+      justify-content:center;
+    }
+
+    .submit-btn{
+      border:0;
+      border-radius:11px;
+      background:var(--primary);
+      color:#fff;
+      padding:12px 28px;
+      font-weight:700;
+      min-width:210px;
+    }
+
+    .submit-btn:hover{background:var(--primary-dark)}
+
+    .loading,.error-box,.success-box{
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:18px;
+      box-shadow:var(--shadow);
+      padding:38px 20px;
+      text-align:center;
+      line-height:1.9;
+      color:var(--muted);
+    }
+
+    .error-box{color:var(--danger)}
+    .success-box h2{color:var(--success);margin:0 0 8px}
+    .success-box p{margin:0;color:var(--muted)}
+
+    .footer{
+      text-align:center;
+      color:var(--muted);
+      font-size:.72rem;
+      line-height:1.9;
+      padding:20px 10px 0;
+    }
+
+    @media(max-width:720px){
+      .page{width:calc(100% - 14px);margin-top:8px}
+      .hero,.card{padding:16px}
+      .hero h1{font-size:1.3rem}
+      .scale{grid-template-columns:1fr}
+      .scale label{
+        min-height:auto;
+        flex-direction:row;
+        justify-content:flex-start;
+        text-align:right;
+        padding:10px 12px;
+      }
+      .scale label::before{
+        content:"";
+        width:10px;height:10px;border:2px solid #9fb3af;border-radius:50%;
+        flex:0 0 auto;
+      }
+      .scale label:has(input:checked)::before{
+        border-color:var(--primary);
+        background:var(--primary);
+      }
+      .choice-row{grid-template-columns:1fr}
+    }
+
+    @media print{
+      body{background:#fff}
+      .page{width:100%;margin:0}
+      .school-header,.hero,.card{box-shadow:none}
+      .submit-wrap,.message{display:none!important}
+    }
+  </style>
+</head>
+
+<body>
+  <main class="page">
+    <section class="school-header">
+      <img src="school-header.jpg" alt="الترويسة الرسمية للمدرسة"
+           onerror="this.parentElement.style.display='none'">
+    </section>
+
+    <div id="loadingBox" class="loading">جاري تحميل نموذج الحصر...</div>
+    <div id="errorBox" class="error-box hidden"></div>
+
+    <div id="formArea" class="hidden">
+      <section class="hero">
+        <h1 id="surveyTitle">حصر الاحتياجات التدريبية</h1>
+        <div id="academicYear" class="year"></div>
+        <p id="surveyDescription"></p>
+
+        <div class="notice">
+          يهدف هذا الحصر إلى تحديد الأولويات التدريبية بما يدعم التخطيط لبرامج رفع الكفاءة المهنية وفق الاحتياجات الفعلية.
+          <strong>تستخدم النتائج لأغراض التخطيط والتطوير المهني، ولا تمثل تقييمًا للأداء الوظيفي.</strong>
+        </div>
+      </section>
+
+      <form id="trainingForm" novalidate>
+        <section class="card">
+          <h2 class="section-title">البيانات الأساسية</h2>
+          <p class="section-desc">يرجى استكمال البيانات التالية قبل الانتقال إلى تحديد الاحتياجات التدريبية.</p>
+
+          <div class="field">
+            <label class="main-label" for="fullName">الاسم الثلاثي <span class="required">*</span></label>
+            <input id="fullName" type="text" maxlength="150" autocomplete="name" required>
+          </div>
+
+          <div class="field">
+            <label class="main-label">الفئة الوظيفية <span class="required">*</span></label>
+            <div class="choice-row">
+              <label class="choice-card">
+                <input type="radio" name="employeeType" value="teacher">
+                <span>معلمة</span>
+              </label>
+              <label class="choice-card">
+                <input type="radio" name="employeeType" value="admin">
+                <span>إدارية</span>
+              </label>
+            </div>
+          </div>
+
+          <div id="departmentField" class="field hidden">
+            <label class="main-label" for="department">القسم <span class="required">*</span></label>
+            <select id="department">
+              <option value="">اختاري القسم...</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="main-label">هل أنتِ من المستجدات بالمدرسة خلال العام الدراسي الحالي؟ <span class="required">*</span></label>
+            <div class="choice-row">
+              <label class="choice-card">
+                <input type="radio" name="isNewStaff" value="true">
+                <span>نعم</span>
+              </label>
+              <label class="choice-card">
+                <input type="radio" name="isNewStaff" value="false">
+                <span>لا</span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section id="needsSection" class="card hidden">
+          <h2 class="section-title">درجة الاحتياج التدريبي</h2>
+          <p class="section-desc">
+            حددي درجة احتياجك للتدريب في كل مجال من المجالات التالية.
+          </p>
+
+          <div id="roleNeedsBlock" class="hidden">
+            <div class="group-heading">
+              <span class="dot"></span>
+              <h3 id="roleNeedsTitle">الاحتياجات التدريبية</h3>
+            </div>
+            <div id="roleNeeds" class="needs-wrap"></div>
+          </div>
+
+          <div id="newStaffNeedsBlock" class="hidden" style="margin-top:22px">
+            <div class="group-heading">
+              <span class="dot"></span>
+              <h3>تهيئة المستجدات</h3>
+            </div>
+            <div id="newStaffNeeds" class="needs-wrap"></div>
+          </div>
+        </section>
+
+        <section id="finalSection" class="card hidden">
+          <h2 class="section-title">تفضيلات التطوير المهني</h2>
+          <p class="section-desc">تساعد هذه البيانات في اختيار أساليب الدعم والتدريب الأكثر مناسبة.</p>
+
+          <div class="field">
+            <label class="main-label" for="preferredMethod">أسلوب التدريب المفضل <span class="required">*</span></label>
+            <select id="preferredMethod" required>
+              <option value="">اختاري الأسلوب...</option>
+              <option>ورشة تطبيقية</option>
+              <option>لقاء تدريبي قصير</option>
+              <option>تبادل خبرات وممارسات</option>
+              <option>مادة أو دليل إرشادي</option>
+              <option>تدريب إلكتروني أو تعلم ذاتي موجه</option>
+              <option>دعم فردي عند الحاجة</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="main-label" for="otherNeed">هل يوجد احتياج تدريبي آخر ترغبين في إضافته ولم يرد ضمن المجالات السابقة؟</label>
+            <textarea id="otherNeed" maxlength="1000" placeholder="اختياري"></textarea>
+          </div>
+
+          <div class="field">
+            <label class="main-label">هل لديكِ خبرة أو مهارة يمكنكِ مشاركتها مع زميلاتك؟ <span class="required">*</span></label>
+            <div class="choice-row">
+              <label class="choice-card">
+                <input type="radio" name="canShare" value="true">
+                <span>نعم</span>
+              </label>
+              <label class="choice-card">
+                <input type="radio" name="canShare" value="false">
+                <span>لا</span>
+              </label>
+            </div>
+          </div>
+
+          <div id="expertiseField" class="field hidden">
+            <label class="main-label" for="expertiseArea">اذكري المجال أو المهارة <span class="required">*</span></label>
+            <input id="expertiseArea" type="text" maxlength="500">
+          </div>
+
+          <div id="formMessage" class="message error hidden"></div>
+
+          <div class="submit-wrap">
+            <button id="submitBtn" class="submit-btn" type="submit">إرسال الحصر</button>
+          </div>
+        </section>
+      </form>
+
+      <div class="footer">
+        مدرسة الرفاع الغربي الابتدائية للبنين<br>
+        إعداد: فاتن صلاح — اختصاصي مصادر تعلم
+      </div>
+    </div>
+
+    <section id="successBox" class="success-box hidden">
+      <h2>تم إرسال الحصر بنجاح ✓</h2>
+      <p>شكرًا لمشاركتك. تم حفظ استجابتك بنجاح.</p>
+    </section>
+  </main>
+
+<script>
+  const sb = supabase.createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey);
+
+  const params = new URLSearchParams(location.search);
+  const token = params.get("t");
+
+  let publicData = null;
+  let allItems = [];
+  let currentRole = null;
+  let currentIsNewStaff = null;
+
+  const SCALE = [
+    {value:5,label:"مرتفع جدًا"},
+    {value:4,label:"مرتفع"},
+    {value:3,label:"متوسط"},
+    {value:2,label:"منخفض"},
+    {value:1,label:"لا يوجد احتياج حاليًا"}
+  ];
+
+  document.addEventListener("DOMContentLoaded", init);
+
+  async function init(){
+    bindEvents();
+
+    if(!token){
+      showFatal("رابط الحصر غير مكتمل أو غير صالح.");
+      return;
+    }
+
+    try{
+      const {data,error} = await sb.rpc("get_public_training_needs", {
+        p_token:token
+      });
+
+      if(error) throw error;
+      if(!data || !data.survey) throw new Error("Invalid survey payload");
+
+      publicData = data;
+      allItems = Array.isArray(data.items) ? data.items : [];
+
+      renderSurveyHeader();
+      renderDepartments();
+
+      document.getElementById("loadingBox").classList.add("hidden");
+      document.getElementById("formArea").classList.remove("hidden");
+    }catch(error){
+      console.error("Load public training needs error:",error);
+      showFatal("هذا الحصر غير متاح حاليًا، أو تم إغلاقه، أو انتهت فترة إتاحته.");
+    }
+  }
+
+  function bindEvents(){
+    document.querySelectorAll('input[name="employeeType"]').forEach(el=>{
+      el.addEventListener("change",()=>{
+        currentRole = el.value;
+        handlePathChange();
+      });
+    });
+
+    document.querySelectorAll('input[name="isNewStaff"]').forEach(el=>{
+      el.addEventListener("change",()=>{
+        currentIsNewStaff = el.value === "true";
+        handlePathChange();
+      });
+    });
+
+    document.querySelectorAll('input[name="canShare"]').forEach(el=>{
+      el.addEventListener("change",()=>{
+        const yes = el.value === "true";
+        const field = document.getElementById("expertiseField");
+        const input = document.getElementById("expertiseArea");
+
+        field.classList.toggle("hidden",!yes);
+        input.required = yes;
+
+        if(!yes) input.value = "";
+      });
+    });
+
+    document.getElementById("trainingForm").addEventListener("submit",submitForm);
+  }
+
+  function renderSurveyHeader(){
+    const survey = publicData.survey;
+    document.getElementById("surveyTitle").textContent =
+      survey.title || "حصر الاحتياجات التدريبية";
+
+    const yearEl = document.getElementById("academicYear");
+    if(survey.academic_year){
+      yearEl.textContent = `العام الدراسي ${survey.academic_year}`;
+    }else{
+      yearEl.classList.add("hidden");
+    }
+
+    const desc = document.getElementById("surveyDescription");
+    desc.textContent = survey.description ||
+      "حصر الاحتياجات التدريبية للمعلمات والإداريات والمستجدات.";
+  }
+
+  function renderDepartments(){
+    const select = document.getElementById("department");
+    const departments = Array.isArray(publicData.departments)
+      ? publicData.departments
+      : [];
+
+    select.innerHTML =
+      `<option value="">اختاري القسم...</option>` +
+      departments.map(d=>
+        `<option value="${escapeAttr(d)}">${escapeHtml(d)}</option>`
+      ).join("");
+  }
+
+  function handlePathChange(){
+    const departmentField = document.getElementById("departmentField");
+    const department = document.getElementById("department");
+
+    if(currentRole === "teacher"){
+      departmentField.classList.remove("hidden");
+      department.required = true;
+    }else{
+      departmentField.classList.add("hidden");
+      department.required = false;
+      department.value = "";
+    }
+
+    if(!currentRole || currentIsNewStaff === null){
+      document.getElementById("needsSection").classList.add("hidden");
+      document.getElementById("finalSection").classList.add("hidden");
+      return;
+    }
+
+    renderNeeds();
+    document.getElementById("needsSection").classList.remove("hidden");
+    document.getElementById("finalSection").classList.remove("hidden");
+  }
+
+  function renderNeeds(){
+    const roleItems = allItems
+      .filter(i=>i.target_group === currentRole)
+      .sort((a,b)=>(a.sort_order||0)-(b.sort_order||0));
+
+    const newStaffItems = currentIsNewStaff
+      ? allItems.filter(i=>i.target_group === "new_staff")
+          .sort((a,b)=>(a.sort_order||0)-(b.sort_order||0))
+      : [];
+
+    document.getElementById("roleNeedsTitle").textContent =
+      currentRole === "teacher"
+        ? "الاحتياجات التدريبية للمعلمات"
+        : "الاحتياجات التدريبية للإداريات";
+
+    const roleBlock = document.getElementById("roleNeedsBlock");
+    roleBlock.classList.toggle("hidden",roleItems.length === 0);
+
+    document.getElementById("roleNeeds").innerHTML =
+      roleItems.map(renderNeedCard).join("");
+
+    const newBlock = document.getElementById("newStaffNeedsBlock");
+    newBlock.classList.toggle("hidden",newStaffItems.length === 0);
+
+    document.getElementById("newStaffNeeds").innerHTML =
+      newStaffItems.map(renderNeedCard).join("");
+  }
+
+  function renderNeedCard(item){
+    return `
+      <article class="need-card" data-item-id="${escapeAttr(item.id)}">
+        <p class="need-title">${escapeHtml(item.need_text)}</p>
+        <div class="scale">
+          ${SCALE.map(opt=>`
+            <label>
+              <input
+                type="radio"
+                name="need_${escapeAttr(item.id)}"
+                value="${opt.value}"
+                ${item.required ? "required" : ""}>
+              <strong>${opt.value}</strong>
+              <span>${escapeHtml(opt.label)}</span>
+            </label>
+          `).join("")}
+        </div>
+      </article>
+    `;
+  }
+
+  function getSelectedRadio(name){
+    const el = document.querySelector(`input[name="${name}"]:checked`);
+    return el ? el.value : null;
+  }
+
+  function collectVisibleAnswers(){
+    const roleItems = allItems.filter(i=>i.target_group === currentRole);
+    const newItems = currentIsNewStaff
+      ? allItems.filter(i=>i.target_group === "new_staff")
+      : [];
+
+    const visibleItems = [...roleItems,...newItems];
+
+    return visibleItems.map(item=>{
+      const selected = document.querySelector(
+        `input[name="need_${CSS.escape(item.id)}"]:checked`
+      );
+
+      return {
+        item_id:item.id,
+        need_level:selected ? Number(selected.value) : null
+      };
+    });
+  }
+
+  function validateForm(){
+    const fullName = document.getElementById("fullName").value.trim();
+    if(!fullName) return "يرجى إدخال الاسم الثلاثي.";
+
+    if(!currentRole) return "يرجى اختيار الفئة الوظيفية.";
+
+    if(currentRole === "teacher" && !document.getElementById("department").value){
+      return "يرجى اختيار القسم.";
+    }
+
+    if(currentIsNewStaff === null){
+      return "يرجى تحديد ما إذا كنتِ من المستجدات بالمدرسة.";
+    }
+
+    const answers = collectVisibleAnswers();
+    if(!answers.length){
+      return "تعذر تحميل بنود الاحتياجات التدريبية لهذا المسار.";
+    }
+
+    const missing = answers.find(a=>!Number.isInteger(a.need_level));
+    if(missing){
+      return "يرجى تحديد درجة الاحتياج لجميع البنود التدريبية.";
+    }
+
+    if(!document.getElementById("preferredMethod").value){
+      return "يرجى اختيار أسلوب التدريب المفضل.";
+    }
+
+    const canShare = getSelectedRadio("canShare");
+    if(canShare === null){
+      return "يرجى تحديد ما إذا كانت لديكِ خبرة أو مهارة يمكنكِ مشاركتها.";
+    }
+
+    if(canShare === "true" && !document.getElementById("expertiseArea").value.trim()){
+      return "يرجى ذكر مجال الخبرة أو المهارة التي يمكنكِ مشاركتها.";
+    }
+
+    return null;
+  }
+
+  async function submitForm(e){
+    e.preventDefault();
+
+    const message = document.getElementById("formMessage");
+    const btn = document.getElementById("submitBtn");
+
+    message.classList.add("hidden");
+    message.textContent = "";
+
+    const validationError = validateForm();
+    if(validationError){
+      showFormError(validationError);
+      return;
+    }
+
+    const canShare = getSelectedRadio("canShare") === "true";
+    const answers = collectVisibleAnswers();
+
+    btn.disabled = true;
+    btn.textContent = "جاري الإرسال...";
+
+    try{
+      const payload = {
+        p_token:token,
+        p_full_name:document.getElementById("fullName").value.trim(),
+        p_employee_type:currentRole,
+        p_department:currentRole === "teacher"
+          ? document.getElementById("department").value
+          : null,
+        p_is_new_staff:currentIsNewStaff,
+        p_preferred_training_method:document.getElementById("preferredMethod").value,
+        p_other_training_need:document.getElementById("otherNeed").value.trim() || null,
+        p_can_share_expertise:canShare,
+        p_expertise_area:canShare
+          ? document.getElementById("expertiseArea").value.trim()
+          : null,
+        p_answers:answers
+      };
+
+      const {data,error} = await sb.rpc("submit_training_needs",payload);
+      if(error) throw error;
+
+      document.getElementById("formArea").classList.add("hidden");
+      document.getElementById("successBox").classList.remove("hidden");
+      window.scrollTo({top:0,behavior:"smooth"});
+    }catch(error){
+      console.error("Submit training needs error:",error);
+      showFormError("تعذر إرسال الحصر في الوقت الحالي. يرجى مراجعة البيانات والمحاولة مرة أخرى.");
+      btn.disabled = false;
+      btn.textContent = "إرسال الحصر";
+    }
+  }
+
+  function showFormError(text){
+    const message = document.getElementById("formMessage");
+    message.textContent = text;
+    message.classList.remove("hidden");
+    message.scrollIntoView({behavior:"smooth",block:"center"});
+  }
+
+  function showFatal(text){
+    document.getElementById("loadingBox").classList.add("hidden");
+    const box = document.getElementById("errorBox");
+    box.textContent = text;
+    box.classList.remove("hidden");
+  }
+
+  function escapeHtml(value){
+    return String(value ?? "")
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
+  }
+
+  function escapeAttr(value){
+    return escapeHtml(value);
+  }
+</script>
+</body>
+</html>
