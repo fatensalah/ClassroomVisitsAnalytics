@@ -223,6 +223,10 @@
     }
     .metric-help strong{display:block;color:var(--primary-dark);margin-bottom:3px}
     .internal-only{}
+    .respondent-tools{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    .respondent-count{padding:8px 11px;border-radius:999px;background:var(--primary-soft);color:var(--primary-dark);font-size:.72rem;font-weight:700}
+    .respondent-table table{min-width:760px}
+    .new-badge{display:inline-flex;align-items:center;padding:3px 7px;border-radius:999px;background:#fbf4df;color:#7b6124;font-size:.65rem;font-weight:700}
 
     .report-title{
       text-align:center;
@@ -687,6 +691,17 @@
         <div id="filterSummary" class="note"></div>
       </section>
 
+      <section class="panel internal-only">
+        <div class="panel-head">
+          <div>
+            <h2>كشف المستجيبات</h2>
+            <p>قائمة داخلية بأسماء من استكملن الحصر، وتتغير تلقائيًا وفق المرشحات الحالية.</p>
+          </div>
+        </div>
+        <div class="respondent-tools"><div id="respondentsCount" class="respondent-count">0 مستجيبة</div></div>
+        <div id="respondentsList"></div>
+      </section>
+
       <section class="panel">
         <div class="panel-head">
           <div>
@@ -889,6 +904,7 @@
     renderStats(filtered);
     renderFilterSummary(filtered);
     renderExecutiveSummary(filtered);
+    renderRespondents(filtered);
     renderPriorities(filtered);
     renderPeopleNeeds(filtered);
     renderMethods(filtered);
@@ -1054,6 +1070,45 @@
   function setInsight(id,value){
     const el = document.getElementById(id);
     if(el) el.textContent = value;
+  }
+
+  function renderRespondents(filteredSubs){
+    const box = document.getElementById("respondentsList");
+    const countBox = document.getElementById("respondentsCount");
+    if(!box || !countBox) return;
+
+    const rows = [...filteredSubs].sort((a,b)=>
+      String(a.full_name || "").localeCompare(String(b.full_name || ""),"ar")
+    );
+    countBox.textContent = `${rows.length} مستجيبة`;
+
+    if(!rows.length){
+      box.innerHTML = `<div class="empty">لا توجد مستجيبات مطابقة للمرشحات الحالية.</div>`;
+      return;
+    }
+
+    box.innerHTML = `
+      <div class="table-wrap respondent-table">
+        <table>
+          <thead><tr>
+            <th style="width:60px">م</th><th>الاسم</th><th>الفئة</th>
+            <th>القسم / التخصص</th><th>حالة المستجدة</th>
+          </tr></thead>
+          <tbody>
+            ${rows.map((s,index)=>`
+              <tr>
+                <td>${index+1}</td>
+                <td><strong>${escapeHtml(s.full_name || "—")}</strong></td>
+                <td>${escapeHtml(employeeText(s.employee_type))}</td>
+                <td>${escapeHtml(s.department || "—")}</td>
+                <td>${s.is_new_staff
+                  ? `<span class="new-badge">مستجدة</span>`
+                  : `<span class="badge low">غير مستجدة</span>`}</td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+      <div class="compact-note">هذا الكشف للاستخدام الداخلي في متابعة اكتمال الحصر، ولا يظهر عند طباعة التقرير الرسمي.</div>`;
   }
 
   function renderPriorities(filteredSubs){
