@@ -595,7 +595,17 @@
         display:block!important;
       }
     }
-  </style>
+  
+    .recommendation-list{display:grid;gap:8px}
+    .recommendation-item{border:1px solid var(--border);border-radius:12px;padding:11px 13px;background:#fbfdfc;font-size:.76rem;line-height:1.8}
+    .recommendation-item strong{color:var(--primary-dark)}
+    .final-note{margin-top:10px;border:1px solid #d8c693;background:#fffdf6;border-radius:12px;padding:10px 13px;font-size:.72rem;line-height:1.75;color:#5b4a20}
+    @media print{
+      .screen-detail,.internal-only{display:none!important}
+      .official-only{display:block!important}
+      .recommendation-item{break-inside:avoid!important}
+    }
+</style>
 </head>
 <body>
   <main class="page">
@@ -733,7 +743,8 @@
       </section>
 
       <section class="panel">
-        <div class="panel-head"><div><h2>الخطة التدريبية المقترحة الناتجة عن الحصر</h2><p>مسودة آلية للأولويات الأعلى تمهيدًا للاعتماد.</p></div></div>
+        <div class="panel-head"><div><h2 id="actionPlanTitle">مسودة أولية للخطة التدريبية</h2>
+          <p id="actionPlanSubtitle">مبنية آليًا على النتائج الحالية، وتُحدّث حتى إغلاق الحصر واعتماد نتائجه.</p></div></div>
         <div id="actionPlan"></div>
       </section>
 
@@ -793,6 +804,15 @@
           </div>
         </div>
         <div id="otherNeedsList" class="list"></div>
+      </section>
+
+      <section class="panel official-only">
+        <div class="panel-head"><div>
+          <h2>التوصيات التنفيذية</h2>
+          <p>إجراءات مقترحة لتحويل نتائج الحصر إلى قرارات قابلة للتنفيذ والمتابعة.</p>
+        </div></div>
+        <div id="recommendationsList" class="recommendation-list"></div>
+        <div id="reportStatusNote" class="final-note"></div>
       </section>
 
       <section class="official-footer">
@@ -907,6 +927,13 @@
       `العام الدراسي ${survey.academic_year || ""} • حالة الحصر: ${statusText(survey.status)}`;
     document.getElementById("reportDate").textContent =
       `تاريخ استخراج التقرير: ${new Date().toLocaleDateString("ar-BH")} • حالة الحصر: ${statusText(survey.status)}`;
+    const closedSurvey = String(survey.status || "").toLowerCase() === "closed";
+    document.getElementById("actionPlanTitle").textContent =
+      closedSurvey ? "الخطة التدريبية المقترحة بناءً على نتائج الحصر" : "مسودة أولية للخطة التدريبية";
+    document.getElementById("actionPlanSubtitle").textContent =
+      closedSurvey
+        ? "مبنية على نتائج الحصر بعد إغلاقه، وتمثل أساسًا مقترحًا للاعتماد والتنفيذ."
+        : "مبنية آليًا على النتائج الحالية، وتُحدّث حتى إغلاق الحصر واعتماد نتائجه.";
   }
 
   function populateDepartmentFilter(){
@@ -1143,6 +1170,23 @@
       <div class="gap-card"><h3>اتجاه التنفيذ</h3><p>${expertise.length?"الأولوية للتأكد من إمكان تغطية الاحتياجات بخبرات داخلية، ثم الاستعانة بدعم خارجي عند الحاجة.":"تُبحث جهات أو مدربات مناسبات للأولويات المرتفعة لعدم تسجيل خبرات داخلية قابلة للمشاركة."}</p></div>`;
     const plan=rows.filter(r=>r.highPct>=30).slice(0,8);
     document.getElementById("actionPlan").innerHTML=plan.length?`<div class="table-wrap"><table><thead><tr><th>الاحتياج</th><th>الفئة</th><th>مؤشر الحاجة</th><th>التدخل المقترح</th><th>أولوية التنفيذ</th></tr></thead><tbody>${plan.map(r=>{const p=priorityLabel(r.highPct,r.count);return `<tr><td class="need-name">${escapeHtml(r.item.need_text)}</td><td>${escapeHtml(groupText(r.item.target_group))}</td><td>${formatPct(r.highPct)} (${r.highCount}/${r.count})</td><td>${r.highPct>=60?"ورشة/برنامج تطبيقي مركز":"لقاء تطبيقي أو دعم مهني موجّه"}</td><td><span class="badge ${p.className}">${escapeHtml(p.text)}</span></td></tr>`}).join("")}</tbody></table></div>`:'<div class="empty">لا توجد أولويات عند 30% فأعلى.</div>';
+
+    const rec=document.getElementById("recommendationsList");
+    const note=document.getElementById("reportStatusNote");
+    const first=top[0]?.item?.need_text||"";
+    const second=top[1]?.item?.need_text||"";
+    if(rec) rec.innerHTML=`
+      <div class="recommendation-item"><strong>1. البدء بالأولوية الأعلى:</strong> ${first?escapeHtml(first):"تحدد بعد اكتمال البيانات"}، بتدخل تدريبي تطبيقي يتناسب مع طبيعة الاحتياج.</div>
+      <div class="recommendation-item"><strong>2. ترتيب التنفيذ:</strong> البدء بالاحتياجات الأعلى أولوية ثم المتوسطة وفق الإمكانات والزمن المتاح${second?`، مع إدراج ${escapeHtml(second)} ضمن الأولويات التالية`:""}.</div>
+      <div class="recommendation-item"><strong>3. توظيف الخبرات الداخلية:</strong> مطابقة خبرات الموظفات المستعدات للمشاركة مع الاحتياجات قبل إسناد التدريب الداخلي.</div>
+      <div class="recommendation-item"><strong>4. أسلوب التنفيذ:</strong> مراعاة النمط الأكثر تفضيلًا (${escapeHtml(method)}) متى كان مناسبًا للمحتوى والفئة المستهدفة.</div>
+      <div class="recommendation-item"><strong>5. قياس الأثر:</strong> ربط كل تدخل تدريبي بأداة متابعة لاحقة لقياس الاستفادة والتطبيق وتحديث الخطة وفق النتائج.</div>`;
+    if(note){
+      const closed=String(survey?.status||"").toLowerCase()==="closed";
+      note.innerHTML=closed
+        ? "<strong>حالة التقرير:</strong> أُعدت هذه القراءة بعد إغلاق الحصر، وتُراجع الخطة المقترحة وتعتمد وفق إجراءات المدرسة."
+        : "<strong>حالة التقرير:</strong> الحصر ما زال مفتوحًا؛ لذا فالنتائج والخطة الواردة أولية وقابلة للتغير مع وصول استجابات جديدة، ويعتمد التقرير النهائي بعد إغلاق الحصر.";
+    }
   }
 
   function renderRespondents(filteredSubs){
