@@ -1144,13 +1144,13 @@ function consistencyForRatings(
   ratingsMap,
   overall = null
 ) {
+  const requiredKeys = [1, 2, 9, 10];
+
   const missing =
-    EVALUATION_KEYS.filter(
+    requiredKeys.filter(
       key =>
         !num(
-          ratingsMap[
-            key
-          ]
+          ratingsMap[key]
         )
     );
 
@@ -1158,106 +1158,53 @@ function consistencyForRatings(
     missing.length
   ) {
     return {
-      complete:
-        false,
-
-      consistent:
-        false,
-
-      status:
-        "غير مكتمل",
-
+      complete: false,
+      consistent: false,
+      status: "غير مكتمل",
       messages: [
-        `استكملي مفاتيح التقييم: ${missing.join("، ")}`
+        `استكملي المعايير اللازمة لفحص الاتساق: ${missing.map(key => `م${key}`).join("، ")}`
       ],
-
-      expectedOverall:
-        null
+      expectedOverall: null
     };
   }
 
   const base =
     Math.min(
-      num(
-        ratingsMap[1]
-      ),
-      num(
-        ratingsMap[2]
-      )
+      num(ratingsMap[1]),
+      num(ratingsMap[2])
     );
 
-  const messages =
-    [];
+  const messages = [];
 
   if (
-    num(
-      ratingsMap[9]
-    ) !==
+    num(ratingsMap[9]) >
     base
   ) {
     messages.push(
-      `المعيار 9 يجب أن يساوي الأقل بين 1 و2 (${ratingShort(base)}).`
+      `المعيار م9 لا يجوز أن يكون أعلى من الأقل بين م1 وم2 (${ratingShort(base)}). ويمكن أن يساويه أو يكون أقل منه.`
     );
   }
 
   if (
-    num(
-      ratingsMap[10]
-    ) !==
+    num(ratingsMap[10]) >
     base
   ) {
     messages.push(
-      `المعيار 10 يجب أن يساوي الأقل بين 1 و2 (${ratingShort(base)}).`
-    );
-  }
-
-  FLEXIBLE_KEYS
-    .forEach(
-      key => {
-        if (
-          !allowedAtBase(
-            ratingsMap[
-              key
-            ],
-            base
-          )
-        ) {
-          messages.push(
-            `المعيار ${key} يحتاج مراجعة مقابل نمط ${ratingShort(base)}.`
-          );
-        }
-      }
-    );
-
-  if (
-    overall &&
-    num(
-      overall
-    ) !==
-    base
-  ) {
-    messages.push(
-      `الحكم العام المسجل (${ratingShort(overall)}) يحتاج مراجعة مقابل نمط المفاتيح (${ratingShort(base)}).`
+      `المعيار م10 لا يجوز أن يكون أعلى من الأقل بين م1 وم2 (${ratingShort(base)}). ويمكن أن يساويه أو يكون أقل منه.`
     );
   }
 
   return {
-    complete:
-      true,
-
+    complete: true,
     consistent:
-      messages.length ===
-      0,
-
+      messages.length === 0,
     status:
       messages.length
         ? "يحتاج مراجعة"
         : "متسق",
-
     messages,
-
-    expectedOverall:
-      base
+    expectedOverall: null,
+    base
   };
 }
 
@@ -1344,12 +1291,7 @@ function updateConsistencyHint() {
   element.innerHTML =
     result.consistent
       ? `
-          ✓ الرصد والحكم متسقان
-          —
-          النمط:
-          ${ratingShort(
-            result.expectedOverall
-          )}
+          ✓ اتساق الرصد صحيح: م9 وم10 لا يتجاوزان الأقل بين م1 وم2.
         `
       : `
           <strong>
@@ -7162,6 +7104,432 @@ async function generateNarrative() {
 }
 
 /* =========================================================
+   VISIT DRAFT AUTO-SAVE
+========================================================= */
+
+const VISIT_DRAFT_KEY =
+  "classroomVisits:draft:" +
+  String(
+    APP_CONFIG.academicYear ||
+    "current"
+  );
+
+let draftTimer = null;
+let restoringDraft = false;
+
+function updateVisitDraftStatus(
+  text,
+  state = "saved"
+) {
+  const element =
+    $("visitDraftStatus");
+
+  if (!element) {
+    return;
+  }
+
+  element.className =
+    `visit-draft-status ${state}`;
+
+  element.textContent =
+    text;
+}
+
+function collectVisitDraft() {
+  const form =
+    $("visitForm");
+
+  if (!form) {
+    return null;
+  }
+
+  const fields = {};
+
+  form
+    .querySelectorAll(
+      "input, select, textarea"
+    )
+    .forEach(
+      element => {
+        if (
+          !element.id &&
+          !element.name
+        ) {
+          return;
+        }
+
+        const key =
+          element.id ||
+          element.name;
+
+        if (
+          element.type ===
+            "radio"
+        ) {
+          if (
+            element.checked
+          ) {
+            fields[
+              element.name
+            ] =
+              element.value;
+          }
+        }
+        else if (
+          element.type ===
+            "checkbox"
+        ) {
+          fields[key] =
+            !!element.checked;
+        }
+        else {
+          fields[key] =
+            element.value;
+        }
+      }
+    );
+
+  return {
+    version: 1,
+    savedAt:
+      new Date()
+        .toISOString(),
+    editingVisitId:
+      editingVisitId ||
+      null,
+    fields
+  };
+}
+
+function saveVisitDraft() {
+  if (
+    restoringDraft
+  ) {
+    return;
+  }
+
+  const draft =
+    collectVisitDraft();
+
+  if (!draft) {
+    return;
+  }
+
+  try {
+    localStorage.setItem(
+      VISIT_DRAFT_KEY,
+      JSON.stringify(
+        draft
+      )
+    );
+
+    updateVisitDraftStatus(
+      "✓ تم حفظ المسودة تلقائيًا",
+      "saved"
+    );
+  }
+  catch (
+    error
+  ) {
+    console.warn(
+      "تعذر حفظ مسودة الزيارة محليًا:",
+      error
+    );
+  }
+}
+
+function scheduleVisitDraftSave() {
+  clearTimeout(
+    draftTimer
+  );
+
+  updateVisitDraftStatus(
+    "جاري حفظ المسودة…",
+    "saving"
+  );
+
+  draftTimer =
+    setTimeout(
+      saveVisitDraft,
+      350
+    );
+}
+
+function clearVisitDraft() {
+  clearTimeout(
+    draftTimer
+  );
+
+  try {
+    localStorage.removeItem(
+      VISIT_DRAFT_KEY
+    );
+
+    updateVisitDraftStatus(
+      "● يتم حفظ المسودة تلقائيًا",
+      "idle"
+    );
+  }
+  catch (
+    error
+  ) {
+    console.warn(
+      error
+    );
+  }
+}
+
+function hasMeaningfulDraft(
+  draft
+) {
+  if (
+    !draft?.fields
+  ) {
+    return false;
+  }
+
+  return Object.entries(
+    draft.fields
+  )
+    .some(
+      (
+        [
+          key,
+          value
+        ]
+      ) => {
+        if (
+          key ===
+            "visitDate"
+        ) {
+          return false;
+        }
+
+        return (
+          value ===
+            true ||
+          (
+            typeof value ===
+              "string" &&
+            value.trim() !==
+              ""
+          )
+        );
+      }
+    );
+}
+
+function restoreVisitDraft(
+  draft
+) {
+  if (
+    !draft?.fields
+  ) {
+    return;
+  }
+
+  restoringDraft =
+    true;
+
+  editingVisitId =
+    draft.editingVisitId ||
+    null;
+
+  const form =
+    $("visitForm");
+
+  Object.entries(
+    draft.fields
+  )
+    .forEach(
+      (
+        [
+          key,
+          value
+        ]
+      ) => {
+        const byId =
+          $(key);
+
+        if (
+          byId
+        ) {
+          if (
+            byId.type ===
+              "checkbox"
+          ) {
+            byId.checked =
+              !!value;
+          }
+          else {
+            byId.value =
+              value ?? "";
+          }
+
+          return;
+        }
+
+        const radio =
+          form?.querySelector(
+            `input[type="radio"][name="${CSS.escape(
+              key
+            )}"][value="${CSS.escape(
+              String(
+                value
+              )
+            )}"]`
+          );
+
+        if (
+          radio
+        ) {
+          radio.checked =
+            true;
+        }
+      }
+    );
+
+  updateSubjectSelect(
+    draft.fields
+      .subjectSelect ||
+    ""
+  );
+
+  if (
+    $("subjectSelect") &&
+    draft.fields
+      .subjectSelect
+  ) {
+    $("subjectSelect").value =
+      String(
+        draft.fields
+          .subjectSelect
+      );
+  }
+
+  updateEvaluatorBlock();
+  updateConsistencyHint();
+
+  restoringDraft =
+    false;
+
+  showView(
+    "newVisit"
+  );
+
+  const message =
+    $("saveMsg");
+
+  if (
+    message
+  ) {
+    message.className =
+      "message success";
+
+    message.textContent =
+      "تمت استعادة المسودة غير المحفوظة تلقائيًا.";
+  }
+
+  updateVisitDraftStatus(
+    "✓ تمت استعادة المسودة — وسيستمر الحفظ التلقائي",
+    "saved"
+  );
+}
+
+function offerVisitDraftRestore() {
+  let draft = null;
+
+  try {
+    draft =
+      JSON.parse(
+        localStorage.getItem(
+          VISIT_DRAFT_KEY
+        ) ||
+        "null"
+      );
+  }
+  catch (
+    error
+  ) {
+    clearVisitDraft();
+    return;
+  }
+
+  if (
+    !hasMeaningfulDraft(
+      draft
+    )
+  ) {
+    return;
+  }
+
+  const savedAt =
+    draft.savedAt
+      ? new Date(
+          draft.savedAt
+        )
+          .toLocaleString(
+            "ar-BH"
+          )
+      : "";
+
+  const restore =
+    confirm(
+      "توجد مسودة زيارة لم يتم حفظها" +
+      (
+        savedAt
+          ? ` (${savedAt})`
+          : ""
+      ) +
+      ".\n\nهل تريدين استعادتها الآن؟"
+    );
+
+  if (
+    restore
+  ) {
+    restoreVisitDraft(
+      draft
+    );
+  }
+  else {
+    clearVisitDraft();
+  }
+}
+
+function bindVisitDraftAutosave() {
+  const form =
+    $("visitForm");
+
+  if (!form) {
+    return;
+  }
+
+  updateVisitDraftStatus(
+    "● يتم حفظ المسودة تلقائيًا",
+    "idle"
+  );
+
+  [
+    "input",
+    "change"
+  ]
+    .forEach(
+      eventName =>
+        form.addEventListener(
+          eventName,
+          scheduleVisitDraftSave
+        )
+    );
+
+  window.addEventListener(
+    "beforeunload",
+    () => {
+      saveVisitDraft();
+    }
+  );
+}
+
+/* =========================================================
    FORM HELPERS
 ========================================================= */
 
@@ -7315,15 +7683,15 @@ async function saveVisit(
     if (
       num(
         ratingsMap[9]
-      ) !==
+      ) >
         base ||
       num(
         ratingsMap[10]
-      ) !==
+      ) >
         base
     ) {
       throw new Error(
-        "المعياران 9 و10 يجب أن يساويا الأقل بين المعيارين 1 و2."
+        "المعياران م9 وم10 لا يجوز أن يكونا أعلى من الأقل بين م1 وم2، ويجوز أن يساوياه أو يكونا أقل منه."
       );
     }
 
@@ -7451,6 +7819,23 @@ async function saveVisit(
       );
     }
 
+    const supportType =
+      $("supportType")
+        ?.value ||
+      "";
+
+    const selectedCriteria =
+      selectedSupportCriteria();
+
+    if (
+      supportType &&
+      !selectedCriteria.length
+    ) {
+      throw new Error(
+        "اختاري معيارًا واحدًا على الأقل للدعم."
+      );
+    }
+
     let visitId =
       editingVisitId;
 
@@ -7505,16 +7890,6 @@ async function saveVisit(
         data.id;
     }
 
-    await sb
-      .from(
-        "visit_criteria"
-      )
-      .delete()
-      .eq(
-        "visit_id",
-        visitId
-      );
-
     const criteriaRows =
       criteria.map(
         criterion => ({
@@ -7548,8 +7923,12 @@ async function saveVisit(
         .from(
           "visit_criteria"
         )
-        .insert(
-          criteriaRows
+        .upsert(
+          criteriaRows,
+          {
+            onConflict:
+              "visit_id,criterion_no"
+          }
         );
 
     if (
@@ -7684,24 +8063,9 @@ async function saveVisit(
         );
     }
 
-    const supportType =
-      $("supportType")
-        .value;
-
-    const selectedCriteria =
-      selectedSupportCriteria();
-
     if (
       supportType
     ) {
-      if (
-        !selectedCriteria.length
-      ) {
-        throw new Error(
-          "اختاري معيارًا واحدًا على الأقل للدعم."
-        );
-      }
-
       const supportRows =
         selectedCriteria.map(
           criterionNo => ({
@@ -7780,6 +8144,8 @@ async function saveVisit(
       message.textContent =
         "تم حفظ الزيارة بنجاح.";
     }
+
+    clearVisitDraft();
 
     clearForm();
 
@@ -8035,7 +8401,7 @@ window.viewVisit =
           "
         >
 
-          <div class="modal">
+          <div class="modal-card visit-details-modal">
 
             <div class="modal-head">
 
@@ -8462,6 +8828,8 @@ window.editVisit =
 
     updateConsistencyHint();
 
+    saveVisitDraft();
+
     showView(
       "newVisit"
     );
@@ -8483,11 +8851,11 @@ window.deleteVisit =
       return;
     }
 
-    const {
+    let {
       error
     } =
       await sb.rpc(
-        "admin_delete_visit",
+        "delete_visit_authorized",
         {
           p_visit_id:
             id
@@ -8495,10 +8863,33 @@ window.deleteVisit =
       );
 
     if (
+      error &&
+      /function .* does not exist|Could not find the function/i.test(
+        error.message || ""
+      )
+    ) {
+      const legacy =
+        await sb.rpc(
+          "admin_delete_visit",
+          {
+            p_visit_id:
+              id
+          }
+        );
+
+      error =
+        legacy.error;
+    }
+
+    if (
       error
     ) {
       alert(
-        error.message
+        "تعذر حذف الزيارة: " +
+        (
+          error.message ||
+          "تحققي من صلاحيات الحساب."
+        )
       );
 
       return;
@@ -10433,8 +10824,19 @@ function bindNavigation() {
           event => {
             event.preventDefault();
 
+            const targetView =
+              item.dataset.view;
+
+            if (
+              targetView === "newVisit" &&
+              editingVisitId
+            ) {
+              clearVisitDraft();
+              clearForm();
+            }
+
             showView(
-              item.dataset.view
+              targetView
             );
           }
         )
@@ -10993,6 +11395,8 @@ async function boot() {
 
     bindStaticEvents();
 
+    bindVisitDraftAutosave();
+
     renderAll();
 
     if (
@@ -11011,6 +11415,8 @@ async function boot() {
     showView(
       "dashboard"
     );
+
+    offerVisitDraftRestore();
   }
   catch (
     error

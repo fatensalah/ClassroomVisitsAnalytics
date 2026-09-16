@@ -1347,11 +1347,24 @@
 
               الصف / الشعبة
 
-              <input
+              <select
                 id="gradeSection"
-                type="text"
-                placeholder="مثال: الخامس / 2"
+                required
               >
+                <option value="">اختاري الصف / الشعبة</option>
+                <option value="الأول / 1">الأول / 1</option>
+                <option value="الأول / 2">الأول / 2</option>
+                <option value="الثاني / 1">الثاني / 1</option>
+                <option value="الثاني / 2">الثاني / 2</option>
+                <option value="الثالث / 1">الثالث / 1</option>
+                <option value="الثالث / 2">الثالث / 2</option>
+                <option value="الثالث / 3">الثالث / 3</option>
+                <option value="الرابع / 1">الرابع / 1</option>
+                <option value="الرابع / 2">الرابع / 2</option>
+                <option value="الرابع / 3">الرابع / 3</option>
+                <option value="الخامس / 1">الخامس / 1</option>
+                <option value="الخامس / 2">الخامس / 2</option>
+              </select>
 
             </label>
 
@@ -1900,6 +1913,14 @@
             >
               حفظ الزيارة
             </button>
+
+            <div
+              id="visitDraftStatus"
+              class="visit-draft-status idle"
+              aria-live="polite"
+            >
+              ● يتم حفظ المسودة تلقائيًا
+            </div>
 
             <div
               id="saveMsg"
