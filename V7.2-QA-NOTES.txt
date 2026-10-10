@@ -1,0 +1,8 @@
+V7.2 Integrated Completion
+- Base: V7.1 subject/leadership repair.
+- Central actual-visit engine retained for all new analytics.
+- Added Teacher 360 card, M1-M18 matrix, Next Visits Plan, Leadership Decision Center, Data Quality audit.
+- Existing leadership tracking, follow-up center, department 360, subject coverage, support, reports retained.
+- Printing uses existing print CSS; control bars are no-print.
+- No Supabase schema mutation performed.
+QA completed: node --check app.js PASS; duplicate HTML IDs NONE; navigation/view IDs verified.

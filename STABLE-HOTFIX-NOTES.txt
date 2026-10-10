@@ -1,0 +1,14 @@
+STABLE HOTFIX — 2026-10-08
+
+Fixed startup crash: "Maximum call stack size exceeded".
+Root cause: three compatibility wrappers re-declared the same function names (renderAll, monthlyScopeRows, overallFilteredRows). Because function declarations are hoisted, each saved "legacy" reference pointed back to the wrapper itself, causing infinite recursion during startup.
+
+Fix:
+- preserved the original functions
+- wrapped them by assignment after capturing the original reference
+- no Supabase schema/data changes
+- no GitHub changes
+
+Verification:
+- node --check app.js: PASS
+- headless Chromium opened app.html without the previous stack-overflow/error screen: PASS

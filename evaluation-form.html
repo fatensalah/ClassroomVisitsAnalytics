@@ -927,7 +927,11 @@
 
     function renderForm(){
       const app = document.getElementById("app");
-      const description = eventData.description ? escapeHtml(eventData.description) : "";
+      const rawDescription = eventData.description || "";
+      const purposeMatch = rawDescription.match(/^\[\[FORM_PURPOSE:(.*?)\]\]\s*/);
+      const formPurpose = purposeMatch ? purposeMatch[1] : (/حصر.*احتياج|احتياج.*تدريب/.test(eventData.title||"") ? "حصر احتياجات" : "تقييم فعالية");
+      const cleanDescription = purposeMatch ? rawDescription.slice(purposeMatch[0].length) : rawDescription;
+      const description = cleanDescription ? escapeHtml(cleanDescription) : "";
 
       app.innerHTML = `
         <section class="official-sheet">
@@ -941,6 +945,7 @@
           </div>
 
           <div class="event-info">
+            <div style="font-weight:800;color:#0f766e;margin-bottom:5px">${escapeHtml(formPurpose)}</div>
             <h2 class="event-title">${escapeHtml(eventData.title)}</h2>
             ${description ? `<p class="event-description">${description}</p>` : ""}
             <div class="event-meta">

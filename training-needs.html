@@ -119,7 +119,8 @@
       </div>
       <div class="actions">
         <button class="btn btn-soft" type="button" onclick="location.href='app.html'">العودة للمنصة</button>
-        <button id="newSurveyBtn" class="btn btn-primary" type="button">＋ إنشاء حصر جديد</button>
+        <button id="newFlexibleSurveyBtn" class="btn btn-primary" type="button">＋ إنشاء حصر مرن جديد</button>
+        <button id="newSurveyBtn" class="btn btn-soft" type="button">الحصر التدريبي القديم</button>
       </div>
     </header>
 
@@ -144,7 +145,22 @@
     </section>
   </div>
 
-  <div id="createModal" class="modal-backdrop hidden">
+  <div id="flexCreateModal" class="modal-backdrop hidden">
+  <div class="modal">
+    <div class="modal-head"><h3>إنشاء حصر مرن جديد</h3><button id="closeFlexModalBtn" class="close-btn" type="button">×</button></div>
+    <form id="flexCreateForm" class="modal-body">
+      <div id="flexCreateMessage" class="message error hidden"></div>
+      <div class="field"><label for="flexTitle">عنوان الحصر *</label><input id="flexTitle" type="text" maxlength="220" placeholder="مثال: حصر الاحتياجات التدريبية للقيادة الوسطى" required></div>
+      <div class="field"><label for="flexPurpose">هدف الحصر *</label><select id="flexPurpose" required><option value="حصر احتياجات">حصر احتياجات تدريبية</option><option value="تشخيص مستوى">تشخيص مستوى</option><option value="تحديد أولويات">تحديد أولويات</option><option value="حصر مهارات">حصر مهارات</option><option value="تقييم قبلي">تقييم قبلي</option><option value="أخرى">أخرى</option></select></div>
+      <div class="field hidden" id="flexOtherPurposeWrap"><label for="flexOtherPurpose">اكتبي الهدف</label><input id="flexOtherPurpose" type="text" maxlength="100"></div>
+      <div class="field"><label for="flexAudience">الفئة المستهدفة *</label><input id="flexAudience" type="text" maxlength="160" placeholder="مثال: المعلمات / الإداريات / القيادة الوسطى" required></div>
+      <div class="field"><label for="flexDescription">وصف مختصر</label><textarea id="flexDescription" maxlength="800" placeholder="ما الهدف من هذا الحصر؟"></textarea></div>
+      <div class="modal-actions"><button id="cancelFlexCreateBtn" class="btn btn-soft" type="button">إلغاء</button><button id="saveFlexSurveyBtn" class="btn btn-primary" type="submit">إنشاء والانتقال لبناء الأسئلة</button></div>
+    </form>
+  </div>
+</div>
+
+<div id="createModal" class="modal-backdrop hidden">
     <div class="modal">
       <div class="modal-head">
         <h3>إنشاء حصر جديد</h3>
@@ -198,6 +214,11 @@
     currentUser = session.user;
 
     document.getElementById("newSurveyBtn").addEventListener("click",openCreateModal);
+    document.getElementById("newFlexibleSurveyBtn").addEventListener("click",openFlexCreateModal);
+    document.getElementById("closeFlexModalBtn").addEventListener("click",closeFlexCreateModal);
+    document.getElementById("cancelFlexCreateBtn").addEventListener("click",closeFlexCreateModal);
+    document.getElementById("flexCreateForm").addEventListener("submit",createFlexibleSurvey);
+    document.getElementById("flexPurpose").addEventListener("change",()=>{document.getElementById("flexOtherPurposeWrap").classList.toggle("hidden",document.getElementById("flexPurpose").value!=="أخرى");});
     document.getElementById("closeModalBtn").addEventListener("click",closeCreateModal);
     document.getElementById("cancelCreateBtn").addEventListener("click",closeCreateModal);
     document.getElementById("createForm").addEventListener("submit",createSurvey);
@@ -206,9 +227,62 @@
       if(e.target.id === "createModal") closeCreateModal();
     });
 
-    await loadData();
+    await Promise.all([loadData(),loadFlexibleSurveys()]);
   }
 
+  function buildEventDescription(purpose,description){
+    return `[[FORM_PURPOSE:${purpose || "حصر احتياجات"}]]\n${description || ""}`;
+  }
+  function parseEventMeta(raw,title=""){
+    const text=raw||""; const m=text.match(/^\[\[FORM_PURPOSE:(.*?)\]\]\s*/);
+    return {purpose:m?m[1]:(/حصر|احتياج/.test(title)?"حصر احتياجات":"نموذج"),description:m?text.slice(m[0].length):text};
+  }
+  function openFlexCreateModal(){
+    document.getElementById("flexCreateForm").reset();
+    document.getElementById("flexCreateMessage").classList.add("hidden");
+    document.getElementById("flexOtherPurposeWrap").classList.add("hidden");
+    document.getElementById("flexCreateModal").classList.remove("hidden");
+    setTimeout(()=>document.getElementById("flexTitle").focus(),50);
+  }
+  function closeFlexCreateModal(){document.getElementById("flexCreateModal").classList.add("hidden");}
+  async function createFlexibleSurvey(e){
+    e.preventDefault();
+    const title=document.getElementById("flexTitle").value.trim();
+    const audience=document.getElementById("flexAudience").value.trim();
+    const selected=document.getElementById("flexPurpose").value;
+    const purpose=selected==="أخرى"?document.getElementById("flexOtherPurpose").value.trim():selected;
+    const description=document.getElementById("flexDescription").value.trim();
+    const msg=document.getElementById("flexCreateMessage"), btn=document.getElementById("saveFlexSurveyBtn");
+    if(!title||!audience||!purpose){msg.textContent="يرجى إدخال العنوان والهدف والفئة المستهدفة.";msg.classList.remove("hidden");return;}
+    btn.disabled=true;btn.textContent="جاري الإنشاء...";
+    try{
+      const {data,error}=await sb.from("evaluation_events").insert({title,target_audience:audience,description:buildEventDescription(purpose,description),status:"draft",created_by:currentUser.id}).select("*").single();
+      if(error) throw error;
+      location.href=`evaluation-create.html?id=${encodeURIComponent(data.id)}&source=training-needs`;
+    }catch(err){console.error(err);msg.textContent="تعذر إنشاء الحصر المرن.";msg.classList.remove("hidden");btn.disabled=false;btn.textContent="إنشاء والانتقال لبناء الأسئلة";}
+  }
+  async function loadFlexibleSurveys(){
+    const grid=document.getElementById("flexSurveysGrid");
+    try{
+      const [evRes,subRes]=await Promise.all([sb.from("evaluation_events").select("*").order("created_at",{ascending:false}),sb.from("evaluation_submissions").select("id,event_id")]);
+      if(evRes.error) throw evRes.error; if(subRes.error) throw subRes.error;
+      const all=evRes.data||[], subs=subRes.data||[];
+      const flex=all.filter(e=>{const m=parseEventMeta(e.description,e.title);return ["حصر احتياجات","تشخيص مستوى","تحديد أولويات","حصر مهارات","تقييم قبلي"].includes(m.purpose)||/حصر|احتياج|تشخيص|أولويات|مهارات/.test(e.title||"");});
+      if(!flex.length){grid.innerHTML='<div class="empty">لا يوجد حصر مرن بعد. اضغطي «إنشاء حصر مرن جديد».</div>';return;}
+      grid.innerHTML=flex.map(e=>{const m=parseEventMeta(e.description,e.title),count=subs.filter(s=>s.event_id===e.id).length;return `<article class="event-card"><h3>${escapeHtml(e.title)}</h3><p class="event-desc">${escapeHtml(m.description||"بدون وصف")}</p><div class="badges"><span class="badge">${escapeHtml(m.purpose)}</span><span class="badge">${escapeHtml(e.target_audience||"غير محدد")}</span><span class="badge">الاستجابات: ${count}</span><span class="badge ${escapeHtml(e.status||'draft')}">${e.status==='published'?'منشور':e.status==='closed'?'مغلق':'مسودة'}</span></div><div class="event-actions"><button class="btn btn-primary" onclick="location.href='evaluation-create.html?id=${encodeURIComponent(e.id)}&source=training-needs'">إدارة الأسئلة</button><button class="btn btn-soft" onclick="location.href='evaluation-results.html?id=${encodeURIComponent(e.id)}&source=training-needs'">النتائج والتحليل</button><button class="btn btn-soft" onclick="location.href='flexible-training-plan.html?id=${encodeURIComponent(e.id)}'">الخطة التدريبية</button><button class="btn btn-soft" onclick="copyFlexibleSurvey('${e.id}')">نسخ الحصر</button>${e.status==='published'&&e.public_token?`<button class="btn btn-gold" onclick="window.open('evaluation-form.html?t=${encodeURIComponent(e.public_token)}','_blank')">فتح النموذج</button>`:''}</div></article>`}).join('');
+    }catch(err){console.error(err);grid.innerHTML='<div class="error">تعذر تحميل الحصر المرن.</div>';}
+  }
+
+
+  async function copyFlexibleSurvey(id){
+    try{
+      const {data:e,error}=await sb.from("evaluation_events").select("*").eq("id",id).single(); if(error) throw error;
+      const {data:q,error:qe}=await sb.from("evaluation_questions").select("*").eq("event_id",id).order("sort_order"); if(qe) throw qe;
+      const {data:ne,error:ie}=await sb.from("evaluation_events").insert({title:`نسخة - ${e.title}`,target_audience:e.target_audience,description:e.description,status:"draft",created_by:currentUser.id}).select("*").single(); if(ie) throw ie;
+      if((q||[]).length){const rows=q.map(({id,event_id,created_at,...rest})=>({...rest,event_id:ne.id}));const {error:iq}=await sb.from("evaluation_questions").insert(rows);if(iq) throw iq;}
+      alert("تم إنشاء نسخة جديدة كمسودة مع نفس الأسئلة، بدون نسخ الاستجابات."); await loadFlexibleSurveys();
+    }catch(err){console.error(err);alert("تعذر نسخ الحصر.");}
+  }
   async function loadData(){
     const grid = document.getElementById("surveysGrid");
     grid.innerHTML = `<div class="loading">جاري تحميل الحصر...</div>`;

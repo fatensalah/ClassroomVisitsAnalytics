@@ -217,6 +217,38 @@
       </button>
 
 
+      <button data-view="leadershipTracking">
+        <span>◉</span>
+        متابعة الزيارات القيادية
+      </button>
+
+      <button data-view="followupCenter">
+        <span>◆</span>
+        مركز المتابعة
+      </button>
+
+      <button data-view="department360">
+        <span>◌</span>
+        تحليل القسم 360°
+      </button>
+
+      <button data-view="subjectCoverage">
+        <span>▦</span>
+        تحليل المواد والتغطية
+      </button>
+
+
+      <button data-view="teacher360"><span>◍</span> بطاقة المعلمة 360°</button>
+      <button data-view="criteriaMatrix"><span>▥</span> مصفوفة م1–م18</button>
+      <button data-view="nextVisits"><span>➜</span> خطة الزيارات القادمة</button>
+      <button data-view="decisionCenter"><span>✦</span> مركز قرارات القيادة</button>
+      <button data-view="dataQuality"><span>✓</span> جودة البيانات</button>
+
+      <button data-view="athar">
+        <span>✨</span>
+        أثر | النمو والتميز المهني
+      </button>
+
       <button data-view="support">
         <span>◎</span>
         الدعم والمتابعة
@@ -2087,6 +2119,13 @@
             <option value="">كل المعلمات</option>
           </select>
 
+          <select id="monthlyLeadershipSource" title="مصدر التحليل">
+            <option value="official">الرسمي المعتمد</option>
+            <option value="upper">القيادة العليا فقط</option>
+            <option value="middle">القيادة الوسطى فقط</option>
+            <option value="both">العليا + الوسطى (دمج المشتركة)</option>
+          </select>
+
           <button
             id="refreshMonthly"
             class="btn btn-light"
@@ -2150,6 +2189,15 @@
             </select>
           </label>
           <label>
+            مصدر التحليل
+            <select id="overallLeadershipSource">
+              <option value="official">الرسمي المعتمد</option>
+              <option value="upper">القيادة العليا فقط</option>
+              <option value="middle">القيادة الوسطى فقط</option>
+              <option value="both">العليا + الوسطى (دمج المشتركة)</option>
+            </select>
+          </label>
+          <label>
             من شهر
             <select id="overallFromMonth">
               <option value="">أول شهر متاح</option>
@@ -2173,6 +2221,71 @@
     <!-- =====================================================
          SUPPORT
     ====================================================== -->
+
+    <section id="leadershipTrackingView" class="view hidden">
+      <div class="analysis-hero monthly-hero">
+        <div><h2>متابعة الزيارات القيادية</h2><p>تغطية كل عضو قيادة شهريًا: من تمت زيارته، الأحكام، الزيارات المشتركة، ومن لم تتم زيارته.</p></div>
+      </div>
+      <article class="panel no-print">
+        <div class="analysis-filter-bar">
+          <label>عضو القيادة<select id="leadershipObserverFilter" onchange="renderLeadershipTracking()"></select></label>
+          <label>الشهر<select id="leadershipMonthFilter" onchange="renderLeadershipTracking()"></select></label>
+          <label>القسم<select id="leadershipDeptFilter" onchange="renderLeadershipTracking()"></select></label>
+          <div class="leadership-actions"><button class="btn btn-primary" type="button" onclick="renderLeadershipTracking()">تحديث التحليل</button><button class="btn" type="button" onclick="printCurrentLeadershipReport()">طباعة / PDF</button></div>
+        </div>
+      </article>
+      <div id="leadershipTrackingOutput"></div>
+    </section>
+
+    <section id="followupCenterView" class="view hidden">
+      <div class="analysis-hero overall-hero"><div><h2>مركز المتابعة القيادي</h2><p>الحالات التي تحتاج إجراء الآن: قراءة أولية، تحقق، دعم مستهدف، أو أولوية رعاية.</p></div></div>
+      <article class="panel no-print"><div class="analysis-filter-bar"><label>الشهر<select id="followupMonthFilter"></select></label><label>القسم<select id="followupDeptFilter"></select></label><div></div><button class="btn" type="button" onclick="window.print()">طباعة / PDF</button></div></article>
+      <div id="followupCenterOutput"></div>
+    </section>
+
+    <section id="department360View" class="view hidden">
+      <div class="analysis-hero monthly-hero"><div><h2>تحليل القسم 360°</h2><p>التغطية، المعلمات، المعايير، الأولويات، والقرارات في صفحة واحدة.</p></div></div>
+      <article class="panel no-print"><div class="analysis-filter-bar"><label>القسم<select id="dept360Filter"></select></label><label>الشهر<select id="dept360MonthFilter"></select></label><div></div><button class="btn" type="button" onclick="window.print()">طباعة تقرير القسم</button></div></article>
+      <div id="department360Output"></div>
+    </section>
+
+    <section id="subjectCoverageView" class="view hidden">
+      <div class="analysis-hero monthly-hero"><div><h2>تحليل المواد والتغطية</h2><p>تغطية المعلمة × المادة، وتحليل المادة عبر الأقسام، مع مسار مستقل للتربية الخاصة.</p></div></div>
+      <article class="panel no-print"><div class="analysis-filter-bar"><label>الشهر<select id="subjectCoverageMonth" onchange="renderSubjectCoverage()"></select></label><label>القسم<select id="subjectCoverageDept" onchange="renderSubjectCoverage()"></select></label><label>المادة<select id="subjectCoverageSubject" onchange="renderSubjectCoverage()"></select></label><button class="btn" type="button" onclick="window.print()">طباعة / PDF</button></div></article>
+      <div id="subjectCoverageOutput"></div>
+    </section>
+
+
+    <section id="teacher360View" class="view hidden"><div class="analysis-hero monthly-hero"><div><h2>بطاقة المعلمة 360°</h2><p>خط زمني موحد للزيارة والتشخيص والمواد والمعايير والدعم والأثر.</p></div></div><article class="panel no-print"><div class="analysis-filter-bar"><label>المعلمة<select id="teacher360Filter" onchange="renderTeacher360()"></select></label><label>الشهر<select id="teacher360Month" onchange="renderTeacher360()"></select></label><div></div><button class="btn" type="button" onclick="window.print()">طباعة البطاقة</button></div></article><div id="teacher360Output"></div></section>
+
+    <section id="criteriaMatrixView" class="view hidden"><div class="analysis-hero overall-hero"><div><h2>مصفوفة المعلمات × م1–م18</h2><p>قراءة مدرسية سريعة لمواضع التكرار والقوة والمتابعة.</p></div></div><article class="panel no-print"><div class="analysis-filter-bar"><label>الشهر<select id="matrixMonth" onchange="renderCriteriaMatrix()"></select></label><label>القسم<select id="matrixDept" onchange="renderCriteriaMatrix()"></select></label><div></div><button class="btn" type="button" onclick="window.print()">طباعة / PDF</button></div></article><div id="criteriaMatrixOutput"></div></section>
+
+    <section id="nextVisitsView" class="view hidden"><div class="analysis-hero monthly-hero"><div><h2>خطة الزيارات القادمة</h2><p>أولوية مقترحة مبنية على فجوات التغطية، التحقق، الدعم، وإعادة القياس.</p></div></div><article class="panel no-print"><div class="analysis-filter-bar"><label>الشهر<select id="nextVisitsMonth" onchange="renderNextVisits()"></select></label><label>القسم<select id="nextVisitsDept" onchange="renderNextVisits()"></select></label><div></div><button class="btn" type="button" onclick="window.print()">طباعة الخطة</button></div></article><div id="nextVisitsOutput"></div></section>
+
+    <section id="decisionCenterView" class="view hidden"><div class="analysis-hero overall-hero"><div><h2>مركز قرارات القيادة</h2><p>ما يحتاج قرارًا الآن: تغطية، تحقق، دعم، إعادة قياس وجودة بيانات.</p></div></div><article class="panel no-print"><div class="analysis-filter-bar"><label>الشهر<select id="decisionMonth" onchange="renderDecisionCenter()"></select></label><label>القسم<select id="decisionDept" onchange="renderDecisionCenter()"></select></label><div></div><button class="btn" type="button" onclick="window.print()">طباعة الملخص</button></div></article><div id="decisionCenterOutput"></div></section>
+
+    <section id="dataQualityView" class="view hidden"><div class="analysis-hero monthly-hero"><div><h2>جودة البيانات</h2><p>كشف السجلات الناقصة والتعارضات قبل اعتماد التحليل والتقارير.</p></div></div><article class="panel no-print"><div class="analysis-filter-bar"><label>الشهر<select id="qualityMonth" onchange="renderDataQuality()"></select></label><div></div><div></div><button class="btn" type="button" onclick="window.print()">طباعة سجل التدقيق</button></div></article><div id="dataQualityOutput"></div></section>
+
+    <section id="atharView" class="view hidden">
+      <div class="analysis-hero overall-hero">
+        <div><h2>✨ أثر | النمو والتميز المهني</h2><p>نرصد الممارسة • نتابع النمو • نكتشف القوة • نحتفي باستدامة الأثر</p></div>
+      </div>
+      <article class="panel no-print">
+        <div class="analysis-filter-bar">
+          <label>الفترة<select id="atharMonth" onchange="renderAthar()"></select></label>
+          <label>القسم<select id="atharDept" onchange="renderAthar()"></select></label>
+          <label>المعلمة<select id="atharTeacher" onchange="renderAthar()"></select></label>
+          <button class="btn" type="button" onclick="window.print()">طباعة / PDF</button>
+        </div>
+        <div class="athar-tabs" role="tablist" aria-label="أقسام أثر">
+          <button type="button" class="athar-tab active" data-athar-tab="dashboard" onclick="setAtharTab('dashboard')">لوحة أثر</button>
+          <button type="button" class="athar-tab" data-athar-tab="month" onclick="setAtharTab('month')">أثر الشهر</button>
+          <button type="button" class="athar-tab" data-athar-tab="journey" onclick="setAtharTab('journey')">رحلة النمو</button>
+          <button type="button" class="athar-tab" data-athar-tab="cards" onclick="setAtharTab('cards')">بطاقات التكريم</button>
+        </div>
+      </article>
+      <div id="atharOutput"></div>
+    </section>
 
     <section
       id="supportView"
@@ -2199,39 +2312,20 @@
         </div>
 
 
-        <div class="filter-grid">
-
-          <select id="supportTeacherFilter">
-
-            <option value="">
-              كل المعلمات
-            </option>
-
-          </select>
-
-
-          <select id="supportStatusFilter">
-
-            <option value="">
-              كل الحالات
-            </option>
-
-            <option value="مفتوح">
-              مفتوح
-            </option>
-
-            <option value="تحت المتابعة">
-              تحت المتابعة
-            </option>
-
-            <option value="مغلق">
-              مغلق
-            </option>
-
-          </select>
-
+        <div class="analysis-filter-bar no-print">
+          <label>الشهر<select id="supportMonthFilter" onchange="renderSupport()"></select></label>
+          <label>القسم<select id="supportDeptFilter" onchange="renderSupport()"></select></label>
+          <label>المعلمة<select id="supportTeacherFilter" onchange="renderSupport()"><option value="">كل المعلمات</option></select></label>
+          <label>حالة المتابعة<select id="supportStatusFilter" onchange="renderSupport()">
+            <option value="">كل الحالات النشطة</option>
+            <option value="priority">أولى بالرعاية</option>
+            <option value="targeted">دعم مستهدف</option>
+            <option value="verify">متابعة للتحقق</option>
+            <option value="improved">تحسن</option>
+            <option value="closed">مغلقة</option>
+          </select></label>
+          <button class="btn" type="button" onclick="window.print()">طباعة / PDF</button>
         </div>
-
 
         <div id="supportContent"></div>
 
@@ -2368,6 +2462,17 @@
             نمو إلى شهر
             <select id="reportToMonth">
               <option value="">آخر شهر متاح</option>
+            </select>
+          </label>
+
+
+          <label>
+            مصدر التحليل
+            <select id="reportLeadershipSource">
+              <option value="official">التحليل الرسمي المعتمد</option>
+              <option value="upper">القيادة العليا فقط</option>
+              <option value="all">العليا + الوسطى (كل السجلات)</option>
+              <option value="middle">القيادة الوسطى فقط</option>
             </select>
           </label>
 

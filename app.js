@@ -2,7 +2,7 @@ const sb = supabase.createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey)
 
 let currentUser = null;
 let currentProfile = null;
-let teachers = [], departments = [], subjects = [], criteria = [], visits = [], ratings = [], feedback = [], visitSkills = [], studentWork = [], supports = [], supportFollowups = [], profiles = [];
+let teachers = [], departments = [], subjects = [], criteria = [], visits = [], ratings = [], feedback = [], visitSkills = [], studentWork = [], supports = [], supportFollowups = [], profiles = [], teacherSubjects = [];
 let editingVisitId = null;
 let charts = {};
 let reportNarrativeDraft = { summary: "", recommendations: "" };
@@ -369,13 +369,6 @@ async function loadAll() {
         ),
 
       sb
-        .from("subjects")
-        .select("*")
-        .order(
-          "id"
-        ),
-
-      sb
         .from("criteria")
         .select("*")
         .order(
@@ -461,7 +454,6 @@ async function loadAll() {
   [
     teachers,
     departments,
-    subjects,
     criteria,
     visits,
     ratings,
@@ -476,6 +468,20 @@ async function loadAll() {
       item =>
         item.data || []
     );
+
+  // The deployed database currently has no public.subjects endpoint (verified by 404).
+  // Keep the platform operational and use the verified local teacher-subject map
+  // until the Supabase subject catalogue is added in the database phase.
+  subjects = [];
+
+  // V6: teacher_subjects is an optional extension table. The platform remains
+  // operational before the migration is applied and uses the verified school map below.
+  try {
+    const tsReq = await sb.from("teacher_subjects").select("*");
+    teacherSubjects = tsReq.error ? [] : (tsReq.data || []);
+  } catch (_) {
+    teacherSubjects = [];
+  }
 }
 
 /* =========================================================
@@ -10647,6 +10653,25 @@ const VIEW_MAP = {
   overall:
     "overallView",
 
+  leadershipTracking:
+    "leadershipTrackingView",
+
+  followupCenter:
+    "followupCenterView",
+
+  department360:
+    "department360View",
+
+  subjectCoverage:
+    "subjectCoverageView",
+
+  teacher360: "teacher360View",
+  criteriaMatrix: "criteriaMatrixView",
+  nextVisits: "nextVisitsView",
+  decisionCenter: "decisionCenterView",
+  dataQuality: "dataQualityView",
+  athar: "atharView",
+
   support:
     "supportView",
 
@@ -10675,6 +10700,24 @@ const VIEW_TITLES = {
 
   overall:
     "التحليل الشامل",
+
+  leadershipTracking:
+    "متابعة الزيارات القيادية",
+
+  followupCenter:
+    "مركز المتابعة",
+
+  department360:
+    "تحليل القسم 360°",
+
+  subjectCoverage:
+    "تحليل المواد والتغطية",
+  teacher360: "بطاقة المعلمة 360°",
+  criteriaMatrix: "مصفوفة م1–م18",
+  nextVisits: "خطة الزيارات القادمة",
+  decisionCenter: "مركز قرارات القيادة",
+  dataQuality: "جودة البيانات",
+  athar: "أثر | النمو والتميز المهني",
 
   support:
     "الدعم والمتابعة",
@@ -10775,6 +10818,20 @@ function showView(
   ) {
     renderOverall();
   }
+
+  if (name === "leadershipTracking") { renderLeadershipTracking(); }
+
+  if (name === "followupCenter") { renderFollowupCenter(); }
+
+  if (name === "department360") { renderDepartment360(); }
+
+  if (name === "subjectCoverage") { renderSubjectCoverage(); }
+  if (name === "teacher360") { renderTeacher360(); }
+  if (name === "criteriaMatrix") { renderCriteriaMatrix(); }
+  if (name === "nextVisits") { renderNextVisits(); }
+  if (name === "decisionCenter") { renderDecisionCenter(); }
+  if (name === "dataQuality") { renderDataQuality(); }
+  if (name === "athar") { renderAthar(); }
 
   if (
     name ===
@@ -11370,6 +11427,711 @@ function showBootError(
     `;
 }
 
+
+/* =========================================================
+   V5 LEADERSHIP INTELLIGENCE SUITE
+   إضافة آمنة فوق وظائف النسخة الأصلية
+========================================================= */
+function v5MonthLabel(key){
+  if(!key) return "كل الأشهر";
+  const [y,m]=String(key).split("-");
+  return `${monthNames[m] || m} ${y}`;
+}
+function v5TeacherName(id){ return maps().teachers[String(id)]?.full_name || `معلمة ${id}`; }
+function v5DeptName(id){ return maps().departments[String(id)]?.name || "غير محدد"; }
+function v5Profile(id){ return profiles.find(p=>String(p.id)===String(id)); }
+function v5ObserverName(id){ const p=v5Profile(id); return p?.full_name || p?.email || "غير محدد"; }
+function v5LeadershipProfiles(){ return profiles.filter(p=>["قيادة عليا","قيادة وسطى"].includes(leadershipLevel(p))); }
+function v5FillSelect(id, rows, placeholder, valueFn, labelFn){
+  const el=$(id); if(!el) return; const old=el.value;
+  el.innerHTML=`<option value="">${esc(placeholder)}</option>`+rows.map(r=>`<option value="${esc(valueFn(r))}">${esc(labelFn(r))}</option>`).join("");
+  if([...el.options].some(o=>o.value===old)) el.value=old;
+}
+function v5PrepareFilters(){
+  const months=availableMonths();
+  ["leadershipMonthFilter","followupMonthFilter","dept360MonthFilter"].forEach(id=>v5FillSelect(id,months,"كل الأشهر",x=>x,x=>v5MonthLabel(x)));
+  ["leadershipDeptFilter","followupDeptFilter","dept360Filter"].forEach(id=>v5FillSelect(id,activeRows(departments),id==="dept360Filter"?"اختر القسم":"كل الأقسام",x=>x.id,x=>x.name));
+  v5FillSelect("leadershipObserverFilter",v5LeadershipProfiles(),"اختر عضو القيادة",x=>x.id,x=>`${x.full_name || x.email} — ${leadershipLevel(x)}`);
+}
+/* الزيارة الفعلية: نفس المعلمة + التاريخ + الحصة + الصف + المادة/عنوان الدرس.
+   إضافة المادة وعنوان الدرس تمنع دمج زيارتين حقيقيتين مختلفتين في اليوم نفسه. */
+function v5VisitKey(v){
+  return [
+    v.teacher_id,
+    v.visit_date,
+    v.period_name||"",
+    v.grade_section||"",
+    v.subject_id||"",
+    String(v.lesson_title||"").trim()
+  ].join("|");
+}
+function v5VisitGroups(rows){
+  const groups={};
+  rows.forEach(v=>(groups[v5VisitKey(v)] ||= []).push(v));
+  return Object.values(groups);
+}
+function v5ApprovedVisits(rows){
+  return v5VisitGroups(rows).map(g=>{
+    if(g.length===1) return {...g[0],_shared:false,_members:g};
+    const senior=g.find(v=>leadershipLevel(v5Profile(v.observer_id))==="قيادة عليا");
+    return {...(senior||g[0]),_shared:true,_members:g};
+  });
+}
+/* تتبع عضو قيادة بعينه: نكتشف الزيارة المشتركة من جميع سجلات النطاق أولًا،
+   ثم نختار المجموعات التي كان العضو جزءًا منها. ويُعرض حكم العضو نفسه في تقريره الشخصي،
+   بينما يظل الحكم المعتمد للتحليل الرسمي هو حكم القيادة العليا. */
+function v5VisitsForObserver(rows, observerId){
+  return v5VisitGroups(rows)
+    .filter(g=>g.some(v=>String(v.observer_id)===String(observerId)))
+    .map(g=>{
+      const own=g.find(v=>String(v.observer_id)===String(observerId));
+      return {...own,_shared:g.length>1,_members:g};
+    });
+}
+function v5CriteriaForVisit(visitId){ return ratings.filter(r=>String(r.visit_id)===String(visitId)); }
+function v5TeacherDiagnosis(rows, teacherId){
+  const tv=v5ApprovedVisits(rows.filter(v=>String(v.teacher_id)===String(teacherId))).sort((a,b)=>String(a.visit_date).localeCompare(String(b.visit_date)));
+  if(!tv.length) return {key:"unvisited",label:"لم تتم الزيارة",reason:"لا توجد زيارة معتمدة في النطاق",score:0,partial:[],repeat:[]};
+  const partial=[]; const count={};
+  tv.forEach(v=>v5CriteriaForVisit(v.id).filter(r=>num(r.rating)===1).forEach(r=>{const c=String(r.criterion_no); partial.push(c); count[c]=(count[c]||0)+1;}));
+  const repeat=Object.entries(count).filter(([,n])=>n>=2).map(([c])=>c);
+  const distinct=[...new Set(partial)];
+  if(tv.length===1) return {key:"initial",label:"قراءة أولية",reason:distinct.length?`زيارة واحدة؛ ظهر جزئي في م${distinct.join("، م")}`:"زيارة واحدة فقط؛ يلزم رصد مستقل آخر",score:1,partial:distinct,repeat};
+  if(repeat.length) return {key:"priority",label:"أولى بالرعاية",reason:`تكرر التقييم الجزئي في م${repeat.join("، م")} عبر زيارات مستقلة`,score:4,partial:distinct,repeat};
+  if(distinct.length>=2) return {key:"targeted",label:"دعم مستهدف",reason:`ظهرت مؤشرات جزئية في ${distinct.length} معايير: م${distinct.join("، م")}`,score:3,partial:distinct,repeat};
+  if(distinct.length===1) return {key:"verify",label:"متابعة للتحقق",reason:`ظهر جزئي في م${distinct[0]} دون تكرار مستقل حتى الآن`,score:2,partial:distinct,repeat};
+  return {key:"stable",label:"مستقرة في الرصد المتاح",reason:"لا توجد مؤشرات جزئية في الزيارات المعتمدة ضمن النطاق",score:0,partial:[],repeat:[]};
+}
+function v5Badge(d){ const cls={priority:"danger",targeted:"warning",verify:"info",initial:"muted",stable:"success",unvisited:"muted"}[d.key]||"muted"; return `<span class="v5-badge ${cls}">${esc(d.label)}</span>`; }
+function v5RowsForScope(month,dept){ return visits.filter(v=>(!month||monthKey(v.visit_date)===month)&&(!dept||String(v.department_id)===String(dept))); }
+function renderLeadershipTracking(){
+  v5PrepareFilters(); const out=$("leadershipTrackingOutput"); if(!out)return;
+  const observer=$("leadershipObserverFilter")?.value||""; const month=$("leadershipMonthFilter")?.value||availableMonths()[0]||""; const dept=$("leadershipDeptFilter")?.value||"";
+  if($("leadershipMonthFilter")&&!$("leadershipMonthFilter").value&&month) $("leadershipMonthFilter").value=month;
+  if(!observer){ out.innerHTML=`<article class="panel"><div class="empty-state">اختاري عضو القيادة لعرض سجل التغطية بالتفصيل.</div></article>`; return; }
+  const scopeTeachers=activeRows(teachers).filter(t=>!dept||String(t.department_id)===String(dept));
+  const approved=v6LeadershipSubjectRows(observer,month,dept);
+  const visitedIds=new Set(approved.map(v=>String(v.teacher_id))); const notVisited=scopeTeachers.filter(t=>!visitedIds.has(String(t.id)));
+  const p=v5Profile(observer);
+  const teacherRows=[...visitedIds].map(id=>{ const t=scopeTeachers.find(x=>String(x.id)===id)||teachers.find(x=>String(x.id)===id); const vs=approved.filter(v=>String(v.teacher_id)===id).sort((a,b)=>String(b.visit_date).localeCompare(String(a.visit_date))); const last=vs[0]; const configured=t?v6ConfiguredSubjects(t):[]; const covered=[...new Set(vs.map(v=>v6VisitSubject(v)).filter(x=>configured.includes(x)))]; const missing=configured.filter(x=>!covered.includes(x)); const special=t&&v6TeacherCoverageMode(t)==="teacher_only"; return `<tr><td>${esc(v5TeacherName(id))}</td><td>${esc(v5DeptName(last.department_id))}</td><td>${vs.map(v=>`${esc(formatDate(v.visit_date))} — <strong>${esc(v6VisitSubject(v)||"غير محدد")}</strong> — ${esc(ratingLabel(v.overall_rating))}${v._shared?" — 👥 مشتركة":""}`).join("<br>")}</td><td>${special?"لا يطبق":(covered.join("، ")||"—")}</td><td>${special?"متابعة بالمعلمة":(missing.join("، ")||"اكتملت المواد")}</td></tr>`; }).join("");
+  const partialSubject=scopeTeachers.filter(t=>visitedIds.has(String(t.id)) && v6TeacherCoverageMode(t)==="subject_based" && v6ConfiguredSubjects(t).length).filter(t=>{const vs=approved.filter(v=>String(v.teacher_id)===String(t.id)); const covered=[...new Set(vs.map(v=>v6VisitSubject(v)))]; return v6ConfiguredSubjects(t).some(x=>!covered.includes(x));});
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>تقرير متابعة زيارات ${esc(p?.full_name||p?.email||"")}</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"جميع الأقسام")} • ${esc(leadershipLevel(p))}</p></div><div class="v5-kpis"><b>${approved.length}<small>زيارات فعلية</small></b><b>${visitedIds.size}<small>معلمات تمت زيارتهن</small></b><b>${notVisited.length}<small>لم تتم زيارتهن</small></b><b>${partialSubject.length}<small>زارتهن وبقيت مواد</small></b></div></div>
+  <h4>تمت زيارتهن — مع المادة والحكم</h4><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>تفاصيل الزيارة/المادة/الحكم</th><th>مواد غُطيت</th><th>المتبقي من المواد</th></tr></thead><tbody>${teacherRows||`<tr><td colspan="5">لا توجد زيارات في النطاق.</td></tr>`}</tbody></table></div>
+  <h4>لم تتم زيارتهن في ${esc(v5MonthLabel(month))}</h4><div class="v5-chip-list">${notVisited.map(t=>`<span>${esc(t.full_name)} <small>— ${esc(v5DeptName(t.department_id))}</small></span>`).join("")||"<span>اكتملت تغطية المعلمات ضمن النطاق.</span>"}</div>
+  <div class="analysis-note">يعرض التقرير الآن فرقًا واضحًا بين «زيارة المعلمة» و«تغطية موادها». التربية الخاصة (التوحد، صعوبات التعلم، الدمج) تبقى بنمط متابعة المعلمة فقط. الزيارة المشتركة تُعرض مرة واحدة، والتحليل الرسمي يعتمد القيادة العليا عند وجودها.</div></article>`;
+}
+function printCurrentLeadershipReport(){ window.print(); }
+function renderFollowupCenter(){
+  v5PrepareFilters(); const out=$("followupCenterOutput"); if(!out)return;
+  const month=$("followupMonthFilter")?.value||availableMonths()[0]||""; const dept=$("followupDeptFilter")?.value||""; if($("followupMonthFilter")&&!$("followupMonthFilter").value&&month) $("followupMonthFilter").value=month;
+  const rows=v5RowsForScope(month,dept); const candidates=activeRows(teachers).filter(t=>!dept||String(t.department_id)===String(dept)).map(t=>({t,d:v5TeacherDiagnosis(rows,t.id)})).filter(x=>x.d.key!=="stable").sort((a,b)=>b.d.score-a.d.score||a.t.full_name.localeCompare(b.t.full_name,"ar"));
+  out.innerHTML=`<article class="panel v5-report"><h3>الحالات التي تحتاج إجراء — ${esc(v5MonthLabel(month))}</h3><div class="v5-kpis"><b>${candidates.filter(x=>x.d.key==="priority").length}<small>أولى بالرعاية</small></b><b>${candidates.filter(x=>x.d.key==="targeted").length}<small>دعم مستهدف</small></b><b>${candidates.filter(x=>x.d.key==="verify").length}<small>تحقق</small></b><b>${candidates.filter(x=>x.d.key==="initial").length}<small>قراءة أولية</small></b></div><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الحالة</th><th>لماذا؟</th><th>القرار المقترح</th></tr></thead><tbody>${candidates.map(({t,d})=>`<tr><td>${esc(t.full_name)}</td><td>${esc(v5DeptName(t.department_id))}</td><td>${v5Badge(d)}</td><td>${esc(d.reason)}</td><td>${d.key==="priority"?"دعم مستهدف + إعادة رصد":d.key==="targeted"?"تدخل مهني موجه":d.key==="verify"?"زيارة مستقلة للتحقق":d.key==="initial"?"استكمال الرصد":"جدولة زيارة"}</td></tr>`).join("")||`<tr><td colspan="5">لا توجد حالات متابعة في النطاق.</td></tr>`}</tbody></table></div><div class="analysis-note">التصنيف تشخيصي لاتخاذ قرار المتابعة، ولا يساوي حكمًا وظيفيًا على المعلمة. تكرار المؤشر في زيارات مستقلة يرفع أولوية المتابعة.</div></article>`;
+}
+function renderDepartment360(){
+  v5PrepareFilters(); const out=$("department360Output"); if(!out)return;
+  const dept=$("dept360Filter")?.value||""; const month=$("dept360MonthFilter")?.value||availableMonths()[0]||""; if($("dept360MonthFilter")&&!$("dept360MonthFilter").value&&month) $("dept360MonthFilter").value=month;
+  if(!dept){ out.innerHTML=`<article class="panel"><div class="empty-state">اختاري القسم لعرض تحليل 360°.</div></article>`; return; }
+  const ts=activeRows(teachers).filter(t=>String(t.department_id)===String(dept)); const rows=v5RowsForScope(month,dept); const approved=v5ApprovedVisits(rows); const visited=new Set(approved.map(v=>String(v.teacher_id)));
+  const diag=ts.map(t=>({t,d:v5TeacherDiagnosis(rows,t.id),n:approved.filter(v=>String(v.teacher_id)===String(t.id)).length}));
+  const crit={}; approved.forEach(v=>v5CriteriaForVisit(v.id).forEach(r=>{const c=String(r.criterion_no); (crit[c]||={total:0,partial:0,high:0}); crit[c].total++; if(num(r.rating)===1)crit[c].partial++; if(num(r.rating)>=3)crit[c].high++;}));
+  const priorities=Object.entries(crit).sort((a,b)=>pct(b[1].partial,b[1].total)-pct(a[1].partial,a[1].total)).slice(0,5);
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>${esc(v5DeptName(dept))} — تحليل 360°</h3><p>${esc(v5MonthLabel(month))}</p></div><div class="v5-kpis"><b>${ts.length}<small>معلمات القسم</small></b><b>${visited.size}<small>تمت زيارتهن</small></b><b>${approved.length}<small>زيارات معتمدة</small></b><b>${pct(visited.size,ts.length)}%<small>تغطية القسم</small></b></div></div><h4>المعلمات وقراءة المتابعة</h4><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>زيارات</th><th>الحالة</th><th>المعايير الجزئية</th><th>القراءة</th></tr></thead><tbody>${diag.map(({t,d,n})=>`<tr><td>${esc(t.full_name)}</td><td>${n}</td><td>${v5Badge(d)}</td><td>${d.partial.length?`م${d.partial.join("، م")}`:"—"}</td><td>${esc(d.reason)}</td></tr>`).join("")}</tbody></table></div><h4>أعلى أولويات المعايير داخل القسم</h4><div class="v5-priority-grid">${priorities.map(([c,x])=>`<div><strong>م${c}</strong><b>${pct(x.partial,x.total)}%</b><small>يفي جزئيًا • ${x.partial}/${x.total} رصدًا</small></div>`).join("")||"لا توجد بيانات معايير كافية"}</div><div class="analysis-note">قراءة القسم تجمع التغطية والمعلمات والمعايير في صفحة واحدة. أي نسبة تعتمد على الرصد المتاح في الشهر المحدد ولا تُعمم خارج نطاقه.</div></article>`;
+}
+
+
+/* =========================================================
+   V6 SUBJECT COVERAGE & MATERIAL INTELLIGENCE
+   تغطية المعلمة × المادة + تحليل المادة عبر الأقسام
+========================================================= */
+function v6Norm(x){
+  return String(x||"").trim().toLowerCase()
+    .replace(/[أإآ]/g,"ا").replace(/ة/g,"ه").replace(/ى/g,"ي")
+    .replace(/[ًٌٍَُِّْـ]/g,"").replace(/\s+/g," ");
+}
+function v6IsSpecialDeptName(name){
+  const n=v6Norm(name);
+  return n.includes("التوحد") || n.includes("صعوبات التعلم") || n.includes("الدمج");
+}
+function v6TeacherCoverageMode(t){
+  return v6IsSpecialDeptName(v5DeptName(t.department_id)) ? "teacher_only" : "subject_based";
+}
+const V6_VERIFIED_SUBJECT_MAP = [
+  {keys:["حنان"], subjects:["العربي","التربية الإسلامية","العلوم","الرياضيات"]},
+  {keys:["مها بسيوني"], subjects:["العربي","التربية الإسلامية","العلوم","الرياضيات"]},
+  {keys:["هيفاء"], subjects:["العربي","التربية الإسلامية","العلوم","الرياضيات"]},
+  {keys:["دانه جمال","دانة جمال"], subjects:["العربي","التربية الإسلامية","العلوم","الرياضيات"]},
+  {keys:["شريفه الرويعي","شريفة الرويعي"], subjects:["العربي","التربية الإسلامية","العلوم","الرياضيات"]},
+  {keys:["ختام"], subjects:["العربي","التربية الإسلامية","العلوم","الرياضيات"]},
+  {keys:["فاطمه المطر","فاطمة المطر"], subjects:["العربي","التربية الإسلامية","العلوم","الرياضيات"]},
+  {keys:["نجود"], subjects:["الرياضيات","العلوم"]},
+  {keys:["لطيفه","لطيفة"], subjects:["التلاوة"]},
+  {keys:["نوره يحي","نورة يحي"], subjects:["التلاوة"]},
+  {keys:["امال","آمال"], subjects:["الفن"]},
+  {keys:["مني الحلو","منى الحلو"], subjects:["الفن"]},
+  {keys:["مشاعل"], subjects:["التقانة"]},
+  {keys:["مروه محمد صالح","مروة محمد صالح"], subjects:["التقانة"]},
+  {keys:["مروه الحسيني","مروة الحسيني"], subjects:["الحاسوب"]},
+  {keys:["نوال المراغي"], subjects:["الحاسوب"]},
+  {keys:["فاطمه الرويعي","فاطمة الرويعي"], subjects:["الأسرية"]},
+  {keys:["فاطمه البشير","فاطمة البشير"], subjects:["الأسرية","المواطنة"]},
+  {keys:["نوال الحربي"], subjects:["المواطنة"]},
+  {keys:["عبير الطيري"], subjects:["الاجتماعيات","المواطنة"]},
+  {keys:["اروي","أروى"], subjects:["الرياضيات"]},
+  {keys:["نوره سعيد","نورة سعيد"], subjects:["الرياضيات"]},
+  {keys:["جوري"], subjects:["العلوم"]},
+  {keys:["فاطمه الحامد","فاطمة الحامد"], subjects:["العربي","التربية الإسلامية"]},
+  {keys:["عاليه","عالية"], subjects:["العربي","التربية الإسلامية"]},
+  {keys:["الاء","آلاء"], subjects:["العربي","التربية الإسلامية"]},
+  {keys:["امانه","أمانة"], subjects:["الإنجليزي"]},
+  {keys:["شوق"], subjects:["الإنجليزي"]},
+  {keys:["هبه","هبة"], subjects:["الإنجليزي"]}
+];
+function v6CanonicalSubjectName(name){
+  const n=v6Norm(name);
+  const rules=[
+    ["التربيه الاسلاميه","التربية الإسلامية"],["اسلاميه","التربية الإسلامية"],["دين","التربية الإسلامية"],
+    ["اللغه العربيه","العربي"],["عربي","العربي"],
+    ["اللغه الانجليزيه","الإنجليزي"],["انجليزي","الإنجليزي"],
+    ["رياضيات","الرياضيات"],["علوم","العلوم"],["تلاوه","التلاوة"],
+    ["فنون","الفن"],["فن","الفن"],["تقانه","التقانة"],["حاسوب","الحاسوب"],
+    ["اسريه","الأسرية"],["مواطنه","المواطنة"],["اجتماعيات","الاجتماعيات"]
+  ];
+  for(const [k,v] of rules) if(n.includes(k)) return v;
+  return String(name||"").trim() || "غير محدد";
+}
+// Verified subject catalogue from the production database (SQL audit 2026-10-10).
+// The REST endpoint for public.subjects is currently unavailable to the local app (404),
+// so IDs seen in visits must still resolve correctly without inventing a subject.
+const V14_VERIFIED_SUBJECT_ID_MAP = Object.freeze({
+  "1":"اللغة العربية",
+  "2":"التربية الإسلامية",
+  "3":"الرياضيات",
+  "4":"العلوم",
+  "6":"المواطنة",
+  "7":"اللغة العربية",
+  "9":"الرياضيات",
+  "10":"العلوم",
+  "12":"اللغة الإنجليزية",
+  "13":"الحاسوب",
+  "14":"التقانة",
+  "15":"الفن",
+  "17":"التربية الرياضية",
+  "18":"العربي",
+  "22":"العربي",
+  "26":"العربي",
+  "27":"الإنجليزي",
+  "28":"الرياضيات",
+  "32":"الرياضيات"
+});
+function v6SubjectNameById(id){
+  if(id===null || id===undefined || String(id).trim()==="") return "غير محدد";
+  const fromLoaded = subjects.find(s=>String(s.id)===String(id));
+  const raw = fromLoaded?.name || fromLoaded?.subject_name || V14_VERIFIED_SUBJECT_ID_MAP[String(id)] || "";
+  return raw ? v6CanonicalSubjectName(raw) : "غير محدد";
+}
+function v6ConfiguredSubjects(t){
+  if(v6TeacherCoverageMode(t)==="teacher_only") return [];
+  const dbRows=teacherSubjects.filter(x=>String(x.teacher_id)===String(t.id) && x.active!==false);
+  if(dbRows.length){
+    const names=dbRows.map(x=>v6SubjectNameById(x.subject_id)).filter(Boolean);
+    return [...new Set(names)];
+  }
+  const name=v6Norm(t.full_name);
+  // Match verified teacher aliases by significant name tokens, not only contiguous text.
+  // This supports full DB names such as "فاطمة علي أحمد الحامد" for alias "فاطمة الحامد".
+  const aliasMatches=(full,alias)=>{
+    const ft=new Set(v6Norm(full).split(" ").filter(Boolean));
+    const at=v6Norm(alias).split(" ").filter(Boolean);
+    return at.length>0 && at.every(tok=>ft.has(tok));
+  };
+  const match=V6_VERIFIED_SUBJECT_MAP.find(row=>row.keys.some(k=>aliasMatches(name,k)));
+  if(match) return match.subjects.slice();
+  // Safe fallback for single-subject teachers: infer only when visits consistently show one subject.
+  const seen=[...new Set(visits.filter(v=>String(v.teacher_id)===String(t.id) && v.subject_id).map(v=>v6SubjectNameById(v.subject_id)).filter(Boolean))];
+  return seen.length===1 ? seen : [];
+}
+function v6VisitSubject(v){ return v6SubjectNameById(v.subject_id); }
+function v6TeacherSubjectCoverage(t, rows){
+  const configured=v6ConfiguredSubjects(t);
+  if(v6TeacherCoverageMode(t)==="teacher_only"){
+    const n=v5ApprovedVisits(rows.filter(v=>String(v.teacher_id)===String(t.id))).length;
+    return {mode:"teacher_only",configured:[],covered:[],missing:[],visitCount:n,status:n?"visited":"unvisited"};
+  }
+  const approved=v5ApprovedVisits(rows.filter(v=>String(v.teacher_id)===String(t.id)));
+  const covered=[...new Set(approved.map(v=>v6VisitSubject(v)).filter(x=>configured.includes(x)))];
+  const missing=configured.filter(x=>!covered.includes(x));
+  return {mode:"subject_based",configured,covered,missing,visitCount:approved.length,status:!approved.length?"unvisited":missing.length?"partial":"complete"};
+}
+function v6CoverageBadge(c){
+  if(c.mode==="teacher_only") return c.status==="visited"?'<span class="v5-badge success">تمت الزيارة</span>':'<span class="v5-badge muted">لم تتم الزيارة</span>';
+  if(c.status==="complete") return '<span class="v5-badge success">مكتملة المواد</span>';
+  if(c.status==="partial") return '<span class="v5-badge warning">تغطية مواد جزئية</span>';
+  return '<span class="v5-badge muted">لم تتم الزيارة</span>';
+}
+function v6SubjectStats(rows, subjectName){
+  const r=v5ApprovedVisits(rows).filter(v=>v6VisitSubject(v)===subjectName);
+  const tids=new Set(r.map(v=>String(v.teacher_id)));
+  const crit={};
+  r.forEach(v=>v5CriteriaForVisit(v.id).forEach(x=>{const c=String(x.criterion_no); (crit[c]||={total:0,partial:0,high:0}); crit[c].total++; if(num(x.rating)===1)crit[c].partial++; if(num(x.rating)>=3)crit[c].high++;}));
+  const priority=Object.entries(crit).sort((a,b)=>pct(b[1].partial,b[1].total)-pct(a[1].partial,a[1].total)).slice(0,5);
+  return {rows:r,teachers:tids,crit,priority};
+}
+function v6AllConfiguredSubjects(ts){ return [...new Set(ts.flatMap(t=>v6ConfiguredSubjects(t)))].sort((a,b)=>a.localeCompare(b,"ar")); }
+function renderSubjectCoverage(){
+  const out=$("subjectCoverageOutput"); if(!out) return;
+  v6PrepareSubjectFilters();
+  const month=$("subjectCoverageMonth")?.value || availableMonths()[0] || "";
+  const dept=$("subjectCoverageDept")?.value || "";
+  const chosen=$("subjectCoverageSubject")?.value || "";
+  if($("subjectCoverageMonth")&&!$("subjectCoverageMonth").value&&month) $("subjectCoverageMonth").value=month;
+  const ts=activeRows(teachers).filter(t=>!dept||String(t.department_id)===String(dept));
+  const rows=v5RowsForScope(month,dept);
+  const coverage=ts.map(t=>({t,c:v6TeacherSubjectCoverage(t,rows)}));
+  const subjectBased=coverage.filter(x=>x.c.mode==="subject_based" && x.c.configured.length);
+  const special=coverage.filter(x=>x.c.mode==="teacher_only");
+  const slots=subjectBased.reduce((n,x)=>n+x.c.configured.length,0);
+  const coveredSlots=subjectBased.reduce((n,x)=>n+x.c.covered.length,0);
+  const teacherVisited=coverage.filter(x=>x.c.visitCount>0).length;
+  const allSubjects=v6AllConfiguredSubjects(ts);
+  const subject=chosen || allSubjects[0] || "";
+  if($("subjectCoverageSubject") && !$("subjectCoverageSubject").value && subject) $("subjectCoverageSubject").value=subject;
+  const ss=subject?v6SubjectStats(rows,subject):{rows:[],teachers:new Set(),priority:[]};
+  const targetTeachers=ts.filter(t=>v6ConfiguredSubjects(t).includes(subject));
+  const subjectCoverage=pct(targetTeachers.filter(t=>ss.teachers.has(String(t.id))).length,targetTeachers.length);
+  out.innerHTML=`<article class="panel v5-report">
+    <div class="v5-report-head"><div><h3>تحليل المواد والتغطية</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"جميع الأقسام")}</p></div>
+    <div class="v5-kpis"><b>${pct(teacherVisited,ts.length)}%<small>تغطية المعلمات</small></b><b>${pct(coveredSlots,slots)}%<small>تغطية المواد المستهدفة</small></b><b>${coveredSlots}/${slots}<small>معلمة × مادة مغطاة</small></b><b>${special.length}<small>تربية خاصة بنمط مستقل</small></b></div></div>
+    <div class="analysis-note">تغطية المعلمة لا تعني تلقائيًا تغطية كل موادها. المواد تُقاس على مستوى الفصل الدراسي/النطاق المحدد، بينما التوحد وصعوبات التعلم والدمج تُتابع بالمعلمة والزيارة فقط.</div>
+    <h4>مصفوفة تغطية المعلمة × المادة</h4>
+    <div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الحالة</th><th>تمت تغطيته</th><th>المتبقي</th><th>الزيارات</th></tr></thead><tbody>
+    ${coverage.map(({t,c})=>`<tr><td>${esc(t.full_name)}</td><td>${esc(v5DeptName(t.department_id))}</td><td>${v6CoverageBadge(c)}</td><td>${c.mode==="teacher_only"?(c.visitCount?"زيارة المعلمة مكتملة":"—"):(c.covered.map(x=>`✓ ${esc(x)}`).join("<br>")||"—")}</td><td>${c.mode==="teacher_only"?"لا يطبق تحليل المواد":(c.missing.map(x=>`◷ ${esc(x)}`).join("<br>")||"لا يوجد")}</td><td>${c.visitCount}</td></tr>`).join("")}
+    </tbody></table></div>
+    <h4>تحليل مادة: ${esc(subject||"—")}</h4>
+    <div class="v5-kpis"><b>${targetTeachers.length}<small>معلمات يدرسن المادة</small></b><b>${ss.teachers.size}<small>تم رصدهن في المادة</small></b><b>${ss.rows.length}<small>زيارات المادة</small></b><b>${subjectCoverage}%<small>تغطية المادة</small></b></div>
+    <div class="v5-priority-grid">${ss.priority.map(([c,x])=>`<div><strong>م${c}</strong><b>${pct(x.partial,x.total)}%</b><small>يفي جزئيًا • ${x.partial}/${x.total} رصدًا</small></div>`).join("")||"لا توجد بيانات معايير كافية لهذه المادة"}</div>
+    <div class="analysis-note">تحليل المادة يجمع زيارات المادة عبر الأقسام، لكنه يعرض حجم الرصد صراحةً حتى لا تتحول الفروق الناتجة عن قلة الزيارات إلى مقارنة أداء مضللة.</div>
+  </article>`;
+}
+function v6PrepareSubjectFilters(){
+  v5FillSelect("subjectCoverageMonth",availableMonths(),"كل الأشهر",x=>x,x=>v5MonthLabel(x));
+  v5FillSelect("subjectCoverageDept",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name);
+  const dept=$("subjectCoverageDept")?.value||"";
+  const ts=activeRows(teachers).filter(t=>!dept||String(t.department_id)===String(dept));
+  v5FillSelect("subjectCoverageSubject",v6AllConfiguredSubjects(ts),"اختر المادة",x=>x,x=>x);
+}
+function v6LeadershipSubjectRows(observer,month,dept){
+  const scopeRows=v5RowsForScope(month,dept);
+  return v5VisitsForObserver(scopeRows,observer);
+}
+
+
+/* =========================================================
+   V4 — INTEGRATED SAFE LEADERSHIP ANALYTICS
+   Additive layer: preserves original data entry, dashboards,
+   support, impact, forms and reporting; overrides report engine only.
+========================================================= */
+
+function v4AnalysisSource(){ return $("reportLeadershipSource")?.value || "official"; }
+function v4VisitLevel(v){ return leadershipLevel(evaluatorForVisit(v)); }
+function v4SharedKey(v){
+  return [v.teacher_id||"",v.visit_date||"",v.period_name||"",v.grade_section||"",v.subject_id||"",v.lesson_title||""].map(String).join("||");
+}
+function v4AcceptedVisits(rows, source=v4AnalysisSource()){
+  const allowed = rows.filter(v=>["قيادة عليا","قيادة وسطى"].includes(v4VisitLevel(v)));
+  if(source==="upper") return allowed.filter(v=>v4VisitLevel(v)==="قيادة عليا");
+  if(source==="middle") return allowed.filter(v=>v4VisitLevel(v)==="قيادة وسطى");
+  if(source==="all") return allowed;
+  const groups=new Map();
+  allowed.forEach(v=>{ const k=v4SharedKey(v); if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(v); });
+  return [...groups.values()].map(g=>g.find(v=>v4VisitLevel(v)==="قيادة عليا") || g[0]);
+}
+function v4ScopeRawRows(){
+  const mode=selectedReportMode();
+  const departmentId=$("reportDeptFilter")?.value||"";
+  const teacherId=$("reportTeacherFilter")?.value||"";
+  if(mode==="overall") return filterVisitsByScope(visits,{departmentId,teacherId,fromMonth:$("reportFromMonth")?.value||"",toMonth:$("reportToMonth")?.value||""});
+  const month=$("reportMonth")?.value||availableMonths()[0]||"";
+  return filterVisitsByScope(visits,{departmentId,teacherId,fromMonth:month,toMonth:month});
+}
+function reportRows(){ return v4AcceptedVisits(v4ScopeRawRows()); }
+function v4TeacherName(id){ return maps().teachers[String(id)]?.full_name || "معلمة غير محددة"; }
+function v4DeptName(id){ return maps().departments[String(id)]?.name || "قسم غير محدد"; }
+function v4CriterionName(id){ return criteria.find(c=>num(c.id)===num(id))?.criterion_text || `المعيار م${id}`; }
+function v4RatingsForVisitIds(ids){ const s=new Set(ids.map(String)); return ratings.filter(r=>s.has(String(r.visit_id))); }
+
+function v4TeacherDiagnostic(rows, teacherId){
+  const tv=rows.filter(v=>String(v.teacher_id)===String(teacherId)).slice().sort((a,b)=>String(a.visit_date).localeCompare(String(b.visit_date)));
+  const rr=v4RatingsForVisitIds(tv.map(v=>v.id));
+  const partial=rr.filter(r=>num(r.rating)===1);
+  const byCriterion={}; partial.forEach(r=>{ const k=num(r.criterion_no); (byCriterion[k] ||= new Set()).add(String(r.visit_id)); });
+  const repeated=Object.entries(byCriterion).filter(([,set])=>set.size>=2).map(([k])=>num(k));
+  const distinct=Object.keys(byCriterion).map(num);
+  const partialVisits=new Set(partial.map(r=>String(r.visit_id))).size;
+  const last=tv[tv.length-1];
+  const previous=tv[tv.length-2];
+  let status="مستقرة في الرصد المتاح", priority="low", reason="لم يظهر تقييم جزئي في الزيارات المعتمدة ضمن النطاق.";
+  if(tv.length===1){ status="قراءة أولية"; priority="medium"; reason="زيارة معتمدة واحدة فقط؛ يلزم رصد إضافي قبل إصدار اتجاه."; }
+  if(partial.length>0 && tv.length>=1){ status="متابعة للتحقق"; priority="medium"; reason=`ظهر تقييم جزئي في ${distinct.length} معيار/معايير خلال ${partialVisits} زيارة/زيارات.`; }
+  if(tv.length>=2 && (partialVisits>=2 || distinct.length>=2) && repeated.length===0){ status="دعم مستهدف"; priority="medium"; reason=`توزعت مؤشرات جزئية على ${distinct.length} معيار/معايير أو أكثر من زيارة، دون تكرار نفس المعيار مرتين بعد.`; }
+  if(tv.length>=2 && repeated.length){ status="أولى بالرعاية"; priority="high"; reason=`تكرر التقييم الجزئي في ${repeated.map(x=>`م${x}`).join("، ")} عبر زيارتين مستقلتين أو أكثر.`; }
+  const latestOverall=num(last?.overall_rating); const prevOverall=num(previous?.overall_rating);
+  let trend="—"; if(tv.length>=2 && latestOverall && prevOverall) trend=latestOverall>prevOverall?"تحسن":""+(latestOverall<prevOverall?"تراجع":"ثبات");
+  const score=repeated.length*5 + partialVisits*2 + distinct.length + (status==="أولى بالرعاية"?5:0);
+  return {teacherId:String(teacherId),name:v4TeacherName(teacherId),departmentId:String(last?.department_id||tv[0]?.department_id||""),department:v4DeptName(last?.department_id||tv[0]?.department_id),visits:tv.length,partialCount:partial.length,partialVisits,distinct,repeated,status,priority,reason,trend,score};
+}
+function v4TeacherDiagnostics(rows){
+  return [...new Set(rows.map(v=>String(v.teacher_id)).filter(Boolean))].map(id=>v4TeacherDiagnostic(rows,id)).sort((a,b)=>b.score-a.score || a.name.localeCompare(b.name,"ar"));
+}
+function v4SourceLabel(){ return ({official:"التحليل الرسمي المعتمد: العليا + الوسطى مع دمج الزيارة المشتركة واعتماد العليا",upper:"القيادة العليا فقط",middle:"القيادة الوسطى فقط",all:"العليا + الوسطى — جميع السجلات دون دمج"})[v4AnalysisSource()] || "التحليل الرسمي المعتمد"; }
+function v4CriterionRows(rows){ return criterionStats(rows).filter(x=>x.count>0).sort((a,b)=>b.inappropriateRate-a.inappropriateRate || b.exceedsRate-a.exceedsRate); }
+function v4StrengthRows(rows){ return criterionStats(rows).filter(x=>x.count>0).sort((a,b)=>b.exceedsRate-a.exceedsRate || a.inappropriateRate-b.inappropriateRate); }
+function v4DeptDiagnostics(rows){
+  const ds=[...new Set(rows.map(v=>String(v.department_id||"")).filter(Boolean))];
+  return ds.map(id=>{ const dr=rows.filter(v=>String(v.department_id)===id); const td=v4TeacherDiagnostics(dr); return {id,name:v4DeptName(id),visits:dr.length,teachers:td.length,care:td.filter(x=>x.status==="أولى بالرعاية").length,targeted:td.filter(x=>x.status==="دعم مستهدف").length,verify:td.filter(x=>x.status==="متابعة للتحقق").length,initial:td.filter(x=>x.status==="قراءة أولية").length,top:v4CriterionRows(dr)[0]}; }).sort((a,b)=>(b.care+b.targeted)-(a.care+a.targeted)||b.visits-a.visits);
+}
+function v4Coverage(rows){
+  const departmentId=$("reportDeptFilter")?.value||""; const teacherId=$("reportTeacherFilter")?.value||"";
+  return teacherCoverage(rows,{departmentId,teacherId});
+}
+function v4LeadershipDetails(rows){
+  const m=new Map(); rows.forEach(v=>{ const p=evaluatorForVisit(v); const key=String(p?.id||v.observer_id||"unknown"); if(!m.has(key))m.set(key,{name:p?.full_name||"غير محدد",level:v4VisitLevel(v),count:0}); m.get(key).count++; }); return [...m.values()].sort((a,b)=>b.count-a.count);
+}
+function v4PreviousMonthRows(){
+  if(selectedReportMode()!=="monthly") return [];
+  const selected=$("reportMonth")?.value||availableMonths()[0]||"";
+  const departmentId=$("reportDeptFilter")?.value||""; const teacherId=$("reportTeacherFilter")?.value||"";
+  const scoped=filterVisitsByScope(visits,{departmentId,teacherId}); const months=[...new Set(scoped.map(v=>monthKey(v.visit_date)).filter(Boolean))].sort(); const i=months.indexOf(selected); if(i<=0)return [];
+  return v4AcceptedVisits(scoped.filter(v=>monthKey(v.visit_date)===months[i-1]));
+}
+function v4TrendSummary(rows){
+  const prev=v4PreviousMonthRows(); if(!prev.length)return {available:false,text:"لا تتوافر فترة سابقة مكتملة للمقارنة؛ تُعامل الفترة الحالية كخط أساس."};
+  const cur=v4CriterionRows(rows), old=v4CriterionRows(prev); let improved=0,declined=0,stable=0;
+  cur.forEach(c=>{const o=old.find(x=>x.id===c.id); if(!o)return; const d=c.inappropriateRate-o.inappropriateRate; if(d<=-3)improved++; else if(d>=3)declined++; else stable++;});
+  return {available:true,text:`مقارنة بالفترة السابقة: تحسن ${improved} معيارًا، تراجع ${declined}، واستقر ${stable} ضمن هامش ±2 نقطة مئوية.`};
+}
+function v4DecisionRows(rows){
+  const gaps=v4CriterionRows(rows).slice(0,5); return gaps.map((g,i)=>({criterion:`م${g.id}`,name:g.criterion_text,rate:g.inappropriateRate,priority:i===0?"أولوية 1":i<3?"أولوية 2":"متابعة",action:g.inappropriateRate>=20?"دعم مهني موجه + إعادة رصد":"متابعة مستهدفة ونقل ممارسة ناجحة",success:"انخفاض نسبة «جزئي» وارتفاع «يفي تمامًا/يتجاوز» في الرصد اللاحق"}));
+}
+function v4EscList(arr){ return arr.length?arr.map(x=>`م${x}`).join("، "):"—"; }
+
+function generateReport(){
+  const box=$("reportOutput"); if(!box)return;
+  const raw=v4ScopeRawRows(), rows=v4AcceptedVisits(raw), mode=selectedReportMode();
+  const departmentId=$("reportDeptFilter")?.value||"", teacherId=$("reportTeacherFilter")?.value||"";
+  const reportScope=scopeLabel(departmentId,teacherId); const period=mode==="overall"?APP_CONFIG.academicYear:monthLabel($("reportMonth")?.value||availableMonths()[0]||"");
+  const leadership=leadershipVisitStats(rows), coverage=v4Coverage(rows), diag=v4TeacherDiagnostics(rows), dept=v4DeptDiagnostics(rows), gaps=v4CriterionRows(rows), strengths=v4StrengthRows(rows), leaders=v4LeadershipDetails(rows), trend=v4TrendSummary(rows), decisions=v4DecisionRows(rows);
+  const internal=$("reportType")?.value==="internal";
+  const initial=diag.filter(x=>x.status==="قراءة أولية").length, care=diag.filter(x=>x.status==="أولى بالرعاية").length, targeted=diag.filter(x=>x.status==="دعم مستهدف").length, verify=diag.filter(x=>x.status==="متابعة للتحقق").length;
+  const sharedRemoved=Math.max(0,raw.filter(v=>["قيادة عليا","قيادة وسطى"].includes(v4VisitLevel(v))).length-rows.length);
+  const topGap=gaps[0], topStrength=strengths[0];
+  box.innerHTML=`<div class="official-report">
+    <img src="${SCHOOL_HEADER_IMAGE}" style="max-width:100%;margin-bottom:18px" alt="الترويسة الرسمية">
+    <h2>التقرير القيادي المتكامل للزيارات الصفية</h2><p><strong>${esc(period)}</strong> — ${esc(reportScope)}</p>
+    <div class="report-section-note"><strong>منهجية الاعتماد:</strong> ${esc(v4SourceLabel())}. ${sharedRemoved?`تم استبعاد ${sharedRemoved} سجلًا مكررًا ناتجًا عن زيارات مشتركة من الحساب الرسمي.`:"لم ينتج عن قاعدة الدمج استبعاد سجلات ضمن النطاق الحالي."}</div>
+    <h3>1. الملخص التنفيذي</h3>
+    <p id="officialExecutiveSummary">اعتمد التحليل على <strong>${rows.length}</strong> زيارة فعلية/معتمدة شملت <strong>${diag.length}</strong> معلمة، وبلغت التغطية الرصدية <strong>${coverage.rate}%</strong>. نفذت القيادة العليا ${leadership.upper} زيارة والقيادة الوسطى ${leadership.middle}. ${topGap?`وتصدر م${topGap.id} أولويات التطوير بنسبة ${topGap.inappropriateRate}% في مستوى «يفي بالتوقعات جزئيًا».`:""} ${topStrength?`وفي المقابل برز م${topStrength.id} كأحد أقوى المؤشرات بنسبة ${topStrength.exceedsRate}% في «يتجاوز التوقعات فأعلى».`:""} ${trend.text}</p>
+    <div class="leadership-report-grid"><div class="leadership-kpi"><strong>${rows.length}</strong><span>زيارات معتمدة</span></div><div class="leadership-kpi"><strong>${coverage.rate}%</strong><span>تغطية رصدية</span></div><div class="leadership-kpi"><strong>${care}</strong><span>أولى بالرعاية</span></div><div class="leadership-kpi"><strong>${initial}</strong><span>قراءة أولية</span></div></div>
+    <h3>2. جودة البيانات وعمق الرصد</h3><p>من أصل ${diag.length} معلمة مرصودة، توجد ${initial} قراءة أولية، و${verify} حالة متابعة للتحقق، و${targeted} حالة دعم مستهدف، و${care} حالة أولى بالرعاية وفق تكرار المؤشرات الجزئية في زيارات مستقلة. القراءة الأولية لا تعني ضعف الأداء؛ بل عدم كفاية الرصد لتكوين اتجاه ثابت.</p>
+    <h3>3. توزيع القيادة في الرصد</h3><table class="mini-table"><thead><tr><th>المقيم</th><th>المستوى</th><th>الزيارات المعتمدة</th></tr></thead><tbody>${leaders.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.level)}</td><td>${x.count}</td></tr>`).join("")}</tbody></table>
+    <h3>4. التشخيص القيادي للأقسام</h3><table class="mini-table"><thead><tr><th>القسم</th><th>الزيارات</th><th>المعلمات</th><th>أولى بالرعاية</th><th>دعم مستهدف</th><th>متابعة للتحقق</th><th>قراءة أولية</th><th>أعلى أولوية معيارية</th></tr></thead><tbody>${dept.map(d=>`<tr><td>${esc(d.name)}</td><td>${d.visits}</td><td>${d.teachers}</td><td>${d.care}</td><td>${d.targeted}</td><td>${d.verify}</td><td>${d.initial}</td><td>${d.top?`م${d.top.id} — ${d.top.inappropriateRate}% جزئي`:"—"}</td></tr>`).join("")}</tbody></table>
+    <h3>5. تحليل المعايير م1–م18</h3><table class="mini-table"><thead><tr><th>المعيار</th><th>يفي جزئيًا</th><th>يفي تمامًا</th><th>يتجاوز فأعلى</th><th>القراءة القيادية</th></tr></thead><tbody>${gaps.map(g=>`<tr><td><strong>م${g.id}</strong> — ${esc(g.criterion_text)}</td><td>${g.inappropriateRate}%</td><td>${pct(g.satisfactory,g.count)}%</td><td>${g.exceedsRate}%</td><td>${g.inappropriateRate>=20?"أولوية تطوير":g.inappropriateRate>=17?"متابعة/تباين":"قوة أو استقرار نسبي"}</td></tr>`).join("")}</tbody></table>
+    <h3>6. جوانب القوة</h3>${strengths.slice(0,5).map(s=>`<div class="decision-card priority-low"><strong>م${s.id}</strong> — ${esc(s.criterion_text)}: ${s.exceedsRate}% يتجاوز التوقعات فأعلى، و${s.inappropriateRate}% جزئي.</div>`).join("")}
+    <h3>7. أولويات التطوير</h3>${gaps.slice(0,5).map((g,i)=>`<div class="decision-card ${i<3?'priority-high':'priority-medium'}"><strong>${i+1}. م${g.id} — ${esc(g.criterion_text)}</strong><br>نسبة الجزئي: ${g.inappropriateRate}% | يتجاوز فأعلى: ${g.exceedsRate}%</div>`).join("")}
+    <h3>8. من الرصد إلى القرار</h3><table class="mini-table"><thead><tr><th>المؤشر</th><th>الأولوية</th><th>التدخل</th><th>مؤشر النجاح</th></tr></thead><tbody>${decisions.map(d=>`<tr><td>${d.criterion} — ${esc(d.name)} (${d.rate}% جزئي)</td><td>${d.priority}</td><td>${d.action}</td><td>${d.success}</td></tr>`).join("")}</tbody></table>
+    ${internal?`<div class="print-page-break"></div><h3>9. المعلمات المستهدفات بالمتابعة — نسخة داخلية</h3><p class="report-section-note">ظهور الاسم هنا لا يعني «ضعف المعلمة». التصنيف مبني على نمط المؤشرات داخل الزيارات المعتمدة، مع فصل القراءة الأولية والمتابعة للتحقق عن «الأولى بالرعاية».</p><table class="mini-table"><thead><tr><th>المعلمة</th><th>القسم</th><th>الزيارات</th><th>الحالة</th><th>المعايير الجزئية</th><th>المتكررة</th><th>الاتجاه</th><th>لماذا؟</th></tr></thead><tbody>${diag.map(t=>`<tr><td>${esc(t.name)}</td><td>${esc(t.department)}</td><td>${t.visits}</td><td><span class="status-chip">${t.status}</span></td><td>${v4EscList(t.distinct)}</td><td>${v4EscList(t.repeated)}</td><td>${t.trend}</td><td>${esc(t.reason)}</td></tr>`).join("")}</tbody></table>`:""}
+    <h3>${internal?"10":"9"}. الاحتياجات المهنية المستخلصة</h3><p>تُوجه الاحتياجات المدرسية العامة إلى المعايير الأعلى تكرارًا في «جزئي»، بينما يخصص الدعم الفردي للحالات التي تكرر فيها المؤشر في زيارات مستقلة. ويُفضّل استثمار المعايير ذات الأداء القوي في الزيارات التبادلية والنمذجة بدل تقديم تدريب عام غير موجه.</p>
+    <h3>${internal?"11":"10"}. خطة المتابعة للفترة التالية</h3><ul><li>استكمال الرصد للحالات ذات القراءة الأولية قبل إصدار حكم اتجاهي.</li><li>إعادة رصد معايير الأولوية ${gaps.slice(0,4).map(x=>`م${x.id}`).join("، ")} بعد التدخل المهني.</li><li>توجيه الدعم المستهدف للحالات المتكررة، والتحقق من الحالات ذات الظهور الواحد قبل تصعيدها.</li><li>استثمار الممارسات القوية في ${strengths.slice(0,3).map(x=>`م${x.id}`).join("، ")} عبر التعلم من الزملاء والزيارات التبادلية.</li><li>مقارنة الفترة التالية بهذه الفترة لقياس التحسن والتراجع وإغلاق المتابعة عند ثبوت التحسن.</li></ul>
+    <h3>${internal?"12":"11"}. الخلاصة التنفيذية</h3><p id="officialRecommendations">يعتمد القرار القيادي على الزيارة المعتمدة لا على عدد السجلات الخام، وعلى تكرار المؤشر في زيارات مستقلة لا على ظهور جزئي منفرد. الأولوية هي تحويل نتائج الرصد إلى تدخل محدد ثم إعادة القياس، مع المحافظة على جوانب القوة وعدم تعميم الأحكام خارج حجم البيانات المتاح.</p>
+    <div class="report-signatures" style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:34px;padding-top:18px;border-top:2px solid #0d5f66;text-align:center"><div><span>معدّة التقرير</span><br><strong>${REPORT_INFO.preparedBy}</strong></div><div><span>المديرة المساعدة</span><br><strong>${REPORT_INFO.assistantPrincipal}</strong></div><div><span>مديرة المدرسة</span><br><strong>${REPORT_INFO.principal}</strong></div></div>
+  </div>`;
+}
+
+// Keep narrative editor compatible with V4 report.
+document.addEventListener("change",e=>{ if(e.target?.id==="reportLeadershipSource" || e.target?.id==="reportType") generateReport(); });
+
+
+/* =========================================================
+   V6.1 — RELATIONAL REPAIR LAYER
+   Fixes department membership, reactive filters, leadership linkage,
+   subject coverage, and restores the V4 leadership-source report engine.
+========================================================= */
+function v61TeacherDeptIds(t){
+  const ids=new Set();
+  if(t?.department_id!==undefined && t?.department_id!==null && String(t.department_id)!=="") ids.add(String(t.department_id));
+  visits.filter(v=>String(v.teacher_id)===String(t?.id) && v.department_id!==undefined && v.department_id!==null && String(v.department_id)!=="").forEach(v=>ids.add(String(v.department_id)));
+  return [...ids];
+}
+function v61TeachersForDept(dept){
+  const all=activeRows(teachers);
+  if(!dept) return all;
+  return all.filter(t=>v61TeacherDeptIds(t).includes(String(dept)));
+}
+function v61TeacherDeptName(t, preferredDept=""){
+  if(preferredDept && v61TeacherDeptIds(t).includes(String(preferredDept))) return v5DeptName(preferredDept);
+  const ids=v61TeacherDeptIds(t); return ids.length?v5DeptName(ids[0]):"غير محدد";
+}
+function v61TeacherLastDept(rows,teacherId){
+  const vs=rows.filter(v=>String(v.teacher_id)===String(teacherId)).slice().sort((a,b)=>String(b.visit_date).localeCompare(String(a.visit_date)));
+  return vs[0]?.department_id || teachers.find(t=>String(t.id)===String(teacherId))?.department_id || "";
+}
+function v61ConfiguredSubjectsForDept(t,dept){ return v6ConfiguredSubjects(t); }
+
+function renderLeadershipTracking(){
+  v5PrepareFilters(); const out=$("leadershipTrackingOutput"); if(!out)return;
+  const observer=$("leadershipObserverFilter")?.value||""; const month=$("leadershipMonthFilter")?.value||availableMonths()[0]||""; const dept=$("leadershipDeptFilter")?.value||"";
+  if($("leadershipMonthFilter")&&!$("leadershipMonthFilter").value&&month) $("leadershipMonthFilter").value=month;
+  if(!observer){ out.innerHTML=`<article class="panel"><div class="empty-state">اختاري عضو القيادة لعرض سجل التغطية بالتفصيل.</div></article>`; return; }
+  const scopeTeachers=v61TeachersForDept(dept);
+  const approved=v6LeadershipSubjectRows(observer,month,dept);
+  const visitedIds=new Set(approved.map(v=>String(v.teacher_id))); const notVisited=scopeTeachers.filter(t=>!visitedIds.has(String(t.id)));
+  const p=v5Profile(observer);
+  const teacherRows=[...visitedIds].map(id=>{ const t=scopeTeachers.find(x=>String(x.id)===id)||teachers.find(x=>String(x.id)===id); const vs=approved.filter(v=>String(v.teacher_id)===id).sort((a,b)=>String(b.visit_date).localeCompare(String(a.visit_date))); const last=vs[0]; const configured=t?v6ConfiguredSubjects(t):[]; const covered=[...new Set(vs.map(v=>v6VisitSubject(v)).filter(x=>configured.includes(x)))]; const missing=configured.filter(x=>!covered.includes(x)); const special=t&&v6TeacherCoverageMode(t)==="teacher_only"; return `<tr><td>${esc(v5TeacherName(id))}</td><td>${esc(v5DeptName(last?.department_id||v61TeacherLastDept(v5RowsForScope(month,dept),id)))}</td><td>${vs.map(v=>`${esc(formatDate(v.visit_date))} — <strong>${esc(v6VisitSubject(v)||"غير محدد")}</strong> — ${esc(ratingLabel(v.overall_rating))}${v._shared?" — 👥 مشتركة":""}`).join("<br>")}</td><td>${special?"لا يطبق":(covered.join("، ")||"—")}</td><td>${special?"متابعة بالمعلمة":(missing.join("، ")||"اكتملت المواد")}</td></tr>`; }).join("");
+  const partialSubject=scopeTeachers.filter(t=>visitedIds.has(String(t.id)) && v6TeacherCoverageMode(t)==="subject_based" && v6ConfiguredSubjects(t).length).filter(t=>{const vs=approved.filter(v=>String(v.teacher_id)===String(t.id)); const covered=[...new Set(vs.map(v=>v6VisitSubject(v)))]; return v6ConfiguredSubjects(t).some(x=>!covered.includes(x));});
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>تقرير متابعة زيارات ${esc(p?.full_name||p?.email||"")}</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"جميع الأقسام")} • ${esc(leadershipLevel(p))}</p></div><div class="v5-kpis"><b>${approved.length}<small>زيارات فعلية</small></b><b>${visitedIds.size}<small>معلمات تمت زيارتهن</small></b><b>${notVisited.length}<small>لم تتم زيارتهن</small></b><b>${partialSubject.length}<small>زارتهن وبقيت مواد</small></b></div></div>
+  <h4>تمت زيارتهن — مع المادة والحكم</h4><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الزيارة / المادة / الحكم</th><th>مواد تمت تغطيتها</th><th>المتبقي</th></tr></thead><tbody>${teacherRows||`<tr><td colspan="5">لا توجد زيارات لهذا العضو في النطاق المحدد.</td></tr>`}</tbody></table></div>
+  <h4>لم تتم زيارتهن في النطاق المحدد</h4><div class="v5-chip-list">${notVisited.map(t=>`<span>${esc(t.full_name)} <small>• ${esc(v61TeacherDeptName(t,dept))}</small></span>`).join("")||"اكتملت تغطية المعلمات في هذا النطاق"}</div>
+  <div class="analysis-note">التغطية هنا مرتبطة فعليًا بسجل عضو القيادة المختار. زيارة المعلمة لا تعني اكتمال موادها، والزيارة المشتركة تظهر مرة واحدة مع بقاء حكم العضو المختار في تقريره الشخصي.</div></article>`;
+}
+
+function renderDepartment360(){
+  v5PrepareFilters(); const out=$("department360Output"); if(!out)return;
+  const dept=$("dept360Filter")?.value||""; const month=$("dept360MonthFilter")?.value||availableMonths()[0]||""; if($("dept360MonthFilter")&&!$("dept360MonthFilter").value&&month) $("dept360MonthFilter").value=month;
+  if(!dept){ out.innerHTML=`<article class="panel"><div class="empty-state">اختاري القسم لعرض تحليل 360°.</div></article>`; return; }
+  const rows=v5RowsForScope(month,dept), approved=v5ApprovedVisits(rows), ts=v61TeachersForDept(dept), visited=new Set(approved.map(v=>String(v.teacher_id)));
+  const diag=ts.map(t=>({t,d:v5TeacherDiagnosis(rows,t.id),n:approved.filter(v=>String(v.teacher_id)===String(t.id)).length,c:v6TeacherSubjectCoverage(t,rows)}));
+  const stats={}; approved.forEach(v=>v5CriteriaForVisit(v.id).forEach(r=>{const c=String(r.criterion_no);(stats[c]||={total:0,partial:0});stats[c].total++;if(num(r.rating)===1)stats[c].partial++;})); const priorities=Object.entries(stats).sort((a,b)=>pct(b[1].partial,b[1].total)-pct(a[1].partial,a[1].total)).slice(0,5);
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>${esc(v5DeptName(dept))} — تحليل 360°</h3><p>${esc(v5MonthLabel(month))}</p></div><div class="v5-kpis"><b>${ts.length}<small>معلمات القسم</small></b><b>${visited.size}<small>تمت زيارتهن</small></b><b>${approved.length}<small>زيارات معتمدة</small></b><b>${pct(visited.size,ts.length)}%<small>تغطية القسم</small></b></div></div><h4>المعلمات وقراءة المتابعة</h4><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>زيارات</th><th>الحالة</th><th>تغطية المادة</th><th>المعايير الجزئية</th><th>القراءة</th></tr></thead><tbody>${diag.map(({t,d,n,c})=>`<tr><td>${esc(t.full_name)}</td><td>${n}</td><td>${v5Badge(d)}</td><td>${v6CoverageBadge(c)}</td><td>${d.partial.length?`م${d.partial.join("، م")}`:"—"}</td><td>${esc(d.reason)}</td></tr>`).join("")||`<tr><td colspan="6">لا توجد معلمات مرتبطة بهذا القسم في البيانات الحالية.</td></tr>`}</tbody></table></div><h4>أعلى أولويات المعايير داخل القسم</h4><div class="v5-priority-grid">${priorities.map(([c,x])=>`<div><strong>م${c}</strong><b>${pct(x.partial,x.total)}%</b><small>يفي جزئيًا • ${x.partial}/${x.total} رصدًا</small></div>`).join("")||"لا توجد بيانات معايير كافية"}</div><div class="analysis-note">عضوية القسم تُستنتج من بيانات المعلمة ومن زياراتها الفعلية، لذلك لا تضيع المعلمة إذا كان department_id غير محفوظ في سجل teachers.</div></article>`;
+}
+
+function renderFollowupCenter(){
+  v5PrepareFilters(); const out=$("followupCenterOutput"); if(!out)return;
+  const month=$("followupMonthFilter")?.value||availableMonths()[0]||""; const dept=$("followupDeptFilter")?.value||""; if($("followupMonthFilter")&&!$("followupMonthFilter").value&&month) $("followupMonthFilter").value=month;
+  const rows=v5RowsForScope(month,dept); const ts=v61TeachersForDept(dept); const list=ts.map(t=>({t,d:v5TeacherDiagnosis(rows,t.id)})).filter(x=>["priority","targeted","verify","initial"].includes(x.d.key)).sort((a,b)=>b.d.score-a.d.score||a.t.full_name.localeCompare(b.t.full_name,"ar"));
+  const counts=k=>list.filter(x=>x.d.key===k).length;
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>الحالات التي تحتاج إجراء — ${esc(v5MonthLabel(month))}</h3><p>${esc(dept?v5DeptName(dept):"جميع الأقسام")}</p></div><div class="v5-kpis"><b>${counts("priority")}<small>أولى بالرعاية</small></b><b>${counts("targeted")}<small>دعم مستهدف</small></b><b>${counts("verify")}<small>تحقق</small></b><b>${counts("initial")}<small>قراءة أولية</small></b></div></div><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الحالة</th><th>لماذا؟</th><th>القرار المقترح</th></tr></thead><tbody>${list.map(({t,d})=>`<tr><td>${esc(t.full_name)}</td><td>${esc(v61TeacherDeptName(t,dept)||v5DeptName(v61TeacherLastDept(rows,t.id)))}</td><td>${v5Badge(d)}</td><td>${esc(d.reason)}</td><td>${d.key==="priority"?"دعم مستهدف + إعادة رصد":d.key==="targeted"?"تدخل مهني موجه":d.key==="verify"?"زيارة مستقلة للتحقق":"استكمال الرصد"}</td></tr>`).join("")||`<tr><td colspan="5">لا توجد حالات متابعة في النطاق المحدد.</td></tr>`}</tbody></table></div></article>`;
+}
+
+function v6PrepareSubjectFilters(){
+  v5FillSelect("subjectCoverageMonth",availableMonths(),"كل الأشهر",x=>x,x=>v5MonthLabel(x));
+  v5FillSelect("subjectCoverageDept",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name);
+  const dept=$("subjectCoverageDept")?.value||""; const ts=v61TeachersForDept(dept);
+  v5FillSelect("subjectCoverageSubject",v6AllConfiguredSubjects(ts),"اختر المادة",x=>x,x=>x);
+}
+function renderSubjectCoverage(){
+  const out=$("subjectCoverageOutput"); if(!out) return; v6PrepareSubjectFilters();
+  const month=$("subjectCoverageMonth")?.value || availableMonths()[0] || ""; const dept=$("subjectCoverageDept")?.value || ""; const chosen=$("subjectCoverageSubject")?.value || "";
+  if($("subjectCoverageMonth")&&!$("subjectCoverageMonth").value&&month) $("subjectCoverageMonth").value=month;
+  const ts=v61TeachersForDept(dept), rows=v5RowsForScope(month,dept); const coverage=ts.map(t=>({t,c:v6TeacherSubjectCoverage(t,rows)})); const subjectBased=coverage.filter(x=>x.c.mode==="subject_based"&&x.c.configured.length); const special=coverage.filter(x=>x.c.mode==="teacher_only"); const slots=subjectBased.reduce((n,x)=>n+x.c.configured.length,0), coveredSlots=subjectBased.reduce((n,x)=>n+x.c.covered.length,0), teacherVisited=coverage.filter(x=>x.c.visitCount>0).length; const allSubjects=v6AllConfiguredSubjects(ts); const subject=chosen&&allSubjects.includes(chosen)?chosen:(allSubjects[0]||""); if($("subjectCoverageSubject")&&subject) $("subjectCoverageSubject").value=subject; const ss=subject?v6SubjectStats(rows,subject):{rows:[],teachers:new Set(),priority:[]}; const targetTeachers=ts.filter(t=>v6ConfiguredSubjects(t).includes(subject)); const subjectCoverage=pct(targetTeachers.filter(t=>ss.teachers.has(String(t.id))).length,targetTeachers.length);
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>تحليل المواد والتغطية</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"جميع الأقسام")}</p></div><div class="v5-kpis"><b>${pct(teacherVisited,ts.length)}%<small>تغطية المعلمات</small></b><b>${pct(coveredSlots,slots)}%<small>تغطية المواد المستهدفة</small></b><b>${coveredSlots}/${slots}<small>معلمة × مادة مغطاة</small></b><b>${special.length}<small>تربية خاصة بنمط مستقل</small></b></div></div><div class="analysis-note">تغطية المعلمة لا تعني تلقائيًا تغطية كل موادها. عضوية القسم تُقرأ من سجل المعلمة ومن زياراتها الفعلية.</div><h4>مصفوفة تغطية المعلمة × المادة</h4><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الحالة</th><th>تمت تغطيته</th><th>المتبقي</th><th>الزيارات</th></tr></thead><tbody>${coverage.map(({t,c})=>`<tr><td>${esc(t.full_name)}</td><td>${esc(v61TeacherDeptName(t,dept))}</td><td>${v6CoverageBadge(c)}</td><td>${c.mode==="teacher_only"?(c.visitCount?"زيارة المعلمة مكتملة":"—"):(c.covered.map(x=>`✓ ${esc(x)}`).join("<br>")||"—")}</td><td>${c.mode==="teacher_only"?"لا يطبق تحليل المواد":(c.missing.map(x=>`◷ ${esc(x)}`).join("<br>")||"لا يوجد")}</td><td>${c.visitCount}</td></tr>`).join("")||`<tr><td colspan="6">لا توجد معلمات مرتبطة بهذا القسم.</td></tr>`}</tbody></table></div><h4>تحليل مادة: ${esc(subject||"—")}</h4><div class="v5-kpis"><b>${targetTeachers.length}<small>معلمات يدرسن المادة</small></b><b>${ss.teachers.size}<small>تم رصدهن في المادة</small></b><b>${ss.rows.length}<small>زيارات المادة</small></b><b>${subjectCoverage}%<small>تغطية المادة</small></b></div><div class="v5-priority-grid">${ss.priority.map(([c,x])=>`<div><strong>م${c}</strong><b>${pct(x.partial,x.total)}%</b><small>يفي جزئيًا • ${x.partial}/${x.total} رصدًا</small></div>`).join("")||"لا توجد بيانات معايير كافية لهذه المادة"}</div></article>`;
+}
+
+// Reactive linkage: changing a selector immediately refreshes the related analysis.
+document.addEventListener("change",e=>{
+  const id=e.target?.id;
+  if(["leadershipObserverFilter","leadershipMonthFilter","leadershipDeptFilter"].includes(id)) renderLeadershipTracking();
+  if(["followupMonthFilter","followupDeptFilter"].includes(id)) renderFollowupCenter();
+  if(["dept360Filter","dept360MonthFilter"].includes(id)) renderDepartment360();
+  if(id==="subjectCoverageDept"){ const s=$("subjectCoverageSubject"); if(s)s.value=""; renderSubjectCoverage(); }
+  if(["subjectCoverageMonth","subjectCoverageSubject"].includes(id)) renderSubjectCoverage();
+});
+
+
+/* =========================================================
+   V7 — CENTRAL ACTUAL-VISIT ENGINE + COVERAGE REPAIR
+   One source of truth for deduplication, departments, special education,
+   leadership tracking, subject coverage and follow-up.
+========================================================= */
+function v7NormToken(x){ return v6Norm(x).replace(/[^\w\u0600-\u06FF]+/g," ").trim(); }
+function v7ActualVisitKey(v){
+  // A classroom period can only be one actual observation for the same teacher/class.
+  // Do NOT include observer, lesson title or subject: old/shared rows may have one of them blank/different.
+  // grade+period protects genuinely different observations on the same day (e.g. Sharifa case).
+  return [v.teacher_id||"", String(v.visit_date||"").slice(0,10), v7NormToken(v.period_name||""), v7NormToken(v.grade_section||"")].join("||");
+}
+function v7VisitGroups(rows){
+  const m=new Map();
+  (rows||[]).forEach(v=>{ const k=v7ActualVisitKey(v); if(!m.has(k))m.set(k,[]); m.get(k).push(v); });
+  return [...m.values()];
+}
+function v7ActualVisits(rows,{source="official",observerId=""}={}){
+  const allowed=(rows||[]).filter(v=>["قيادة عليا","قيادة وسطى"].includes(leadershipLevel(v5Profile(v.observer_id))));
+  const groups=v7VisitGroups(allowed);
+  if(observerId){
+    return groups.filter(g=>g.some(v=>String(v.observer_id)===String(observerId))).map(g=>{
+      const own=g.find(v=>String(v.observer_id)===String(observerId));
+      return {...own,_shared:g.length>1,_members:g,_actualKey:v7ActualVisitKey(own)};
+    });
+  }
+  if(source==="upper" || source==="middle"){
+    const level=source==="upper"?"قيادة عليا":"قيادة وسطى";
+    return groups.flatMap(g=>{
+      const same=g.filter(v=>leadershipLevel(v5Profile(v.observer_id))===level);
+      if(!same.length)return [];
+      const chosen=same[0]; return [{...chosen,_shared:g.length>1,_members:g,_actualKey:v7ActualVisitKey(chosen)}];
+    });
+  }
+  if(source==="all") return allowed.map(v=>({...v,_shared:v7VisitGroups(allowed).some(g=>g.length>1&&g.includes(v)),_members:[v]}));
+  return groups.map(g=>{
+    const senior=g.find(v=>leadershipLevel(v5Profile(v.observer_id))==="قيادة عليا");
+    const chosen=senior||g[0]; return {...chosen,_shared:g.length>1,_members:g,_actualKey:v7ActualVisitKey(chosen)};
+  });
+}
+// Route every new analysis through the same actual-visit engine.
+function v5VisitKey(v){ return v7ActualVisitKey(v); }
+function v5VisitGroups(rows){ return v7VisitGroups(rows); }
+function v5ApprovedVisits(rows){ return v7ActualVisits(rows,{source:"official"}); }
+function v5VisitsForObserver(rows,observerId){ return v7ActualVisits(rows,{observerId}); }
+function v4SharedKey(v){ return v7ActualVisitKey(v); }
+function v4AcceptedVisits(rows,source=v4AnalysisSource()){ return v7ActualVisits(rows,{source}); }
+
+const V7_SPECIAL_TEACHERS=["ساجده","مها الشمري","نوره الدوسري","زينب اسماعيل","ايمان عبدالرضا"];
+function v7IsSpecialTeacher(t){
+  const n=v6Norm(t?.full_name||"");
+  if(V7_SPECIAL_TEACHERS.some(k=>n.includes(v6Norm(k)))) return true;
+  return v61TeacherDeptIds(t).some(id=>v6IsSpecialDeptName(v5DeptName(id)));
+}
+function v6TeacherCoverageMode(t){ return v7IsSpecialTeacher(t)?"teacher_only":"subject_based"; }
+
+function v7RowsForTeacher(rows,t){ return (rows||[]).filter(v=>String(v.teacher_id)===String(t.id)); }
+function v7ActualSubject(v){
+  let s=v6VisitSubject(v);
+  if(s && s!=="غير محدد") return s;
+  // Shared rows sometimes hold subject only on the other evaluator's row.
+  for(const m of (v._members||[])){ const x=v6VisitSubject(m); if(x&&x!=="غير محدد") return x; }
+  return "غير محدد";
+}
+function v6TeacherSubjectCoverage(t,rows){
+  const actual=v7ActualVisits(v7RowsForTeacher(rows,t),{source:"official"});
+  if(v6TeacherCoverageMode(t)==="teacher_only") return {mode:"teacher_only",configured:[],covered:[],missing:[],visitCount:actual.length,status:actual.length?"visited":"unvisited"};
+  const configured=v6ConfiguredSubjects(t);
+  const covered=[...new Set(actual.map(v=>v7ActualSubject(v)).filter(x=>configured.includes(x)))];
+  const missing=configured.filter(x=>!covered.includes(x));
+  return {mode:"subject_based",configured,covered,missing,visitCount:actual.length,status:!actual.length?"unvisited":(!configured.length||missing.length)?"partial":"complete"};
+}
+function v6SubjectStats(rows,subjectName){
+  const r=v7ActualVisits(rows,{source:"official"}).filter(v=>v7ActualSubject(v)===subjectName);
+  const tids=new Set(r.map(v=>String(v.teacher_id))),crit={};
+  r.forEach(v=>v5CriteriaForVisit(v.id).forEach(x=>{const c=String(x.criterion_no);(crit[c]||={total:0,partial:0,high:0});crit[c].total++;if(num(x.rating)===1)crit[c].partial++;if(num(x.rating)>=3)crit[c].high++;}));
+  const priority=Object.entries(crit).sort((a,b)=>pct(b[1].partial,b[1].total)-pct(a[1].partial,a[1].total)).slice(0,5);
+  return {rows:r,teachers:tids,crit,priority};
+}
+function v7ScopeRows(month,dept){
+  return visits.filter(v=>(!month||monthKey(v.visit_date)===month)&&(!dept||String(v.department_id)===String(dept)));
+}
+function v7TeacherDeptLabel(t,dept=""){ return v61TeacherDeptName(t,dept); }
+
+function v5PrepareFilters(){
+  const months=availableMonths();
+  const configs=[
+    ["leadershipMonthFilter",months,"كل الأشهر",x=>x,x=>v5MonthLabel(x)],
+    ["followupMonthFilter",months,"كل الأشهر",x=>x,x=>v5MonthLabel(x)],
+    ["dept360MonthFilter",months,"كل الأشهر",x=>x,x=>v5MonthLabel(x)],
+    ["leadershipDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name],
+    ["followupDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name],
+    ["dept360Filter",activeRows(departments),"اختر القسم",x=>x.id,x=>x.name],
+    ["leadershipObserverFilter",v5LeadershipProfiles(),"اختر عضو القيادة",x=>x.id,x=>`${x.full_name||x.email} — ${leadershipLevel(x)}`]
+  ];
+  configs.forEach(([id,rows,ph,vf,lf])=>{ const el=$(id); if(el && el.options.length<=1) v5FillSelect(id,rows,ph,vf,lf); });
+}
+function v7EnsureFilterOptions(){
+  const force=(id,rows,ph,vf,lf)=>{const el=$(id);if(!el)return;const old=el.value;v5FillSelect(id,rows,ph,vf,lf);if(old&&[...el.options].some(o=>o.value===old))el.value=old;};
+  const months=availableMonths();
+  force("leadershipMonthFilter",months,"كل الأشهر",x=>x,x=>v5MonthLabel(x)); force("followupMonthFilter",months,"كل الأشهر",x=>x,x=>v5MonthLabel(x)); force("dept360MonthFilter",months,"كل الأشهر",x=>x,x=>v5MonthLabel(x));
+  force("leadershipDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name); force("followupDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name); force("dept360Filter",activeRows(departments),"اختر القسم",x=>x.id,x=>x.name);
+  force("leadershipObserverFilter",v5LeadershipProfiles(),"اختر عضو القيادة",x=>x.id,x=>`${x.full_name||x.email} — ${leadershipLevel(x)}`);
+}
+function renderLeadershipTracking(){
+  v7EnsureFilterOptions(); const out=$("leadershipTrackingOutput"); if(!out)return;
+  const observer=$("leadershipObserverFilter")?.value||"", month=$("leadershipMonthFilter")?.value||availableMonths()[0]||"", dept=$("leadershipDeptFilter")?.value||"";
+  if(!observer){out.innerHTML=`<article class="panel"><div class="empty-state">اختاري عضو القيادة لعرض سجل التغطية بالتفصيل.</div></article>`;return;}
+  const raw=v7ScopeRows(month,dept), actual=v7ActualVisits(raw,{observerId:observer}), ts=v61TeachersForDept(dept), visited=new Set(actual.map(v=>String(v.teacher_id))), notVisited=ts.filter(t=>!visited.has(String(t.id))), p=v5Profile(observer);
+  const rows=[...visited].map(id=>{const t=teachers.find(x=>String(x.id)===id),vs=actual.filter(v=>String(v.teacher_id)===id).sort((a,b)=>String(b.visit_date).localeCompare(String(a.visit_date))),c=t?v6TeacherSubjectCoverage(t,raw):null;return `<tr><td>${esc(v5TeacherName(id))}</td><td>${esc(t?v7TeacherDeptLabel(t,dept):v5DeptName(vs[0]?.department_id))}</td><td>${vs.map(v=>`${esc(formatDate(v.visit_date))} — <strong>${esc(v7ActualSubject(v))}</strong> — ${esc(ratingLabel(v.overall_rating))}${v._shared?` — 👥 مشتركة (${v._members.map(x=>esc(v5ObserverName(x.observer_id))).join(" + ")})`:""}`).join("<br>")}</td><td>${c?.mode==="teacher_only"?"متابعة بالمعلمة":(c?.covered.join("، ")||"—")}</td><td>${c?.mode==="teacher_only"?"لا يطبق":(c?.missing.join("، ")||"لا يوجد")}</td></tr>`;}).join("");
+  const partial=ts.filter(t=>visited.has(String(t.id))&&v6TeacherCoverageMode(t)==="subject_based"&&v6TeacherSubjectCoverage(t,raw).missing.length);
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>تقرير متابعة زيارات ${esc(p?.full_name||p?.email||"")}</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"جميع الأقسام")} • ${esc(leadershipLevel(p))}</p></div><div class="v5-kpis"><b>${actual.length}<small>زيارات فعلية</small></b><b>${visited.size}<small>معلمات تمت زيارتهن</small></b><b>${notVisited.length}<small>لم تتم زيارتهن</small></b><b>${partial.length}<small>زارتهن وبقيت مواد</small></b></div></div><h4>تمت زيارتهن — المادة والحكم</h4><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الزيارة / المادة / الحكم</th><th>المغطى</th><th>المتبقي</th></tr></thead><tbody>${rows||`<tr><td colspan="5">لا توجد زيارات لهذا العضو في النطاق.</td></tr>`}</tbody></table></div><h4>لم تتم زيارتهن</h4><div class="v5-chip-list">${notVisited.map(t=>`<span>${esc(t.full_name)} <small>• ${esc(v7TeacherDeptLabel(t,dept))}</small></span>`).join("")||"<span>اكتملت تغطية المعلمات.</span>"}</div><div class="analysis-note">العداد هنا للزيارات الفعلية بعد دمج الزيارة المشتركة. تقرير عضو القيادة يحتفظ بحكمه، بينما التحليل الرسمي يعتمد القيادة العليا عند الاشتراك.</div></article>`;
+}
+function renderFollowupCenter(){
+  v7EnsureFilterOptions(); const out=$("followupCenterOutput"); if(!out)return;
+  const month=$("followupMonthFilter")?.value||availableMonths()[0]||"",dept=$("followupDeptFilter")?.value||"",raw=v7ScopeRows(month,dept),ts=v61TeachersForDept(dept);
+  const list=ts.map(t=>({t,d:v5TeacherDiagnosis(raw,t.id)})).filter(x=>x.d.key!=="stable").sort((a,b)=>b.d.score-a.d.score||a.t.full_name.localeCompare(b.t.full_name,"ar"));
+  const count=k=>list.filter(x=>x.d.key===k).length;
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>الحالات التي تحتاج إجراء — ${esc(v5MonthLabel(month))}</h3><p>${esc(dept?v5DeptName(dept):"جميع الأقسام")}</p></div><div class="v5-kpis"><b>${count("priority")}<small>أولى بالرعاية</small></b><b>${count("targeted")}<small>دعم مستهدف</small></b><b>${count("verify")}<small>تحقق</small></b><b>${count("initial")}<small>قراءة أولية</small></b><b>${count("unvisited")}<small>لم تتم الزيارة</small></b></div></div><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الحالة</th><th>لماذا؟</th><th>القرار المقترح</th></tr></thead><tbody>${list.map(({t,d})=>`<tr><td>${esc(t.full_name)}</td><td>${esc(v7TeacherDeptLabel(t,dept))}</td><td>${v5Badge(d)}</td><td>${esc(d.reason)}</td><td>${d.key==="priority"?"دعم مستهدف + إعادة رصد":d.key==="targeted"?"تدخل مهني موجه":d.key==="verify"?"زيارة مستقلة للتحقق":d.key==="initial"?"استكمال الرصد":"جدولة زيارة"}</td></tr>`).join("")||`<tr><td colspan="5">لا توجد حالات متابعة.</td></tr>`}</tbody></table></div></article>`;
+}
+function renderDepartment360(){
+  v7EnsureFilterOptions(); const out=$("department360Output"); if(!out)return;
+  const dept=$("dept360Filter")?.value||"",month=$("dept360MonthFilter")?.value||availableMonths()[0]||""; if(!dept){out.innerHTML=`<article class="panel"><div class="empty-state">اختاري القسم لعرض تحليل 360°.</div></article>`;return;}
+  const raw=v7ScopeRows(month,dept),actual=v7ActualVisits(raw,{source:"official"}),ts=v61TeachersForDept(dept),visited=new Set(actual.map(v=>String(v.teacher_id)));
+  const diag=ts.map(t=>({t,d:v5TeacherDiagnosis(raw,t.id),n:actual.filter(v=>String(v.teacher_id)===String(t.id)).length,c:v6TeacherSubjectCoverage(t,raw)}));
+  const stats={};actual.forEach(v=>v5CriteriaForVisit(v.id).forEach(r=>{const c=String(r.criterion_no);(stats[c]||={total:0,partial:0});stats[c].total++;if(num(r.rating)===1)stats[c].partial++;}));const priorities=Object.entries(stats).sort((a,b)=>pct(b[1].partial,b[1].total)-pct(a[1].partial,a[1].total)).slice(0,5);
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>${esc(v5DeptName(dept))} — تحليل 360°</h3><p>${esc(v5MonthLabel(month))}</p></div><div class="v5-kpis"><b>${ts.length}<small>معلمات القسم</small></b><b>${visited.size}<small>تمت زيارتهن</small></b><b>${actual.length}<small>زيارات فعلية معتمدة</small></b><b>${pct(visited.size,ts.length)}%<small>تغطية القسم</small></b></div></div><h4>المعلمات وقراءة المتابعة</h4><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>زيارات فعلية</th><th>الحالة</th><th>تغطية المادة</th><th>المعايير الجزئية</th><th>القراءة</th></tr></thead><tbody>${diag.map(({t,d,n,c})=>`<tr><td>${esc(t.full_name)}</td><td>${n}</td><td>${v5Badge(d)}</td><td>${v6CoverageBadge(c)}</td><td>${d.partial.length?`م${d.partial.join("، م")}`:"—"}</td><td>${esc(d.reason)}</td></tr>`).join("")||`<tr><td colspan="6">لا توجد معلمات مرتبطة بالقسم.</td></tr>`}</tbody></table></div><h4>أعلى أولويات المعايير داخل القسم</h4><div class="v5-priority-grid">${priorities.map(([c,x])=>`<div><strong>م${c}</strong><b>${pct(x.partial,x.total)}%</b><small>يفي جزئيًا • ${x.partial}/${x.total} رصدًا</small></div>`).join("")||"لا توجد بيانات معايير كافية"}</div><div class="analysis-note">كل الأعداد هنا مبنية على محرك الزيارة الفعلية نفسه؛ الزيارة المشتركة لا تضاعف العدد.</div></article>`;
+}
+function v6PrepareSubjectFilters(){
+  const force=(id,rows,ph,vf,lf)=>{const el=$(id);if(!el)return;const old=el.value;v5FillSelect(id,rows,ph,vf,lf);if(old&&[...el.options].some(o=>o.value===old))el.value=old;};
+  force("subjectCoverageMonth",availableMonths(),"كل الأشهر",x=>x,x=>v5MonthLabel(x));force("subjectCoverageDept",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name);
+  const dept=$("subjectCoverageDept")?.value||"",ts=v61TeachersForDept(dept);force("subjectCoverageSubject",v6AllConfiguredSubjects(ts),"اختر المادة",x=>x,x=>x);
+}
+function renderSubjectCoverage(){
+  const out=$("subjectCoverageOutput");if(!out)return;v6PrepareSubjectFilters();
+  const month=$("subjectCoverageMonth")?.value||availableMonths()[0]||"",dept=$("subjectCoverageDept")?.value||"",chosen=$("subjectCoverageSubject")?.value||"",ts=v61TeachersForDept(dept),raw=v7ScopeRows(month,dept),coverage=ts.map(t=>({t,c:v6TeacherSubjectCoverage(t,raw)})),subjectBased=coverage.filter(x=>x.c.mode==="subject_based"&&x.c.configured.length),special=coverage.filter(x=>x.c.mode==="teacher_only"),slots=subjectBased.reduce((n,x)=>n+x.c.configured.length,0),coveredSlots=subjectBased.reduce((n,x)=>n+x.c.covered.length,0),teacherVisited=coverage.filter(x=>x.c.visitCount>0).length,allSubjects=v6AllConfiguredSubjects(ts),subject=chosen&&allSubjects.includes(chosen)?chosen:(allSubjects[0]||"");if($("subjectCoverageSubject")&&subject)$("subjectCoverageSubject").value=subject;const ss=subject?v6SubjectStats(raw,subject):{rows:[],teachers:new Set(),priority:[]},target=ts.filter(t=>v6ConfiguredSubjects(t).includes(subject)),subjectPct=pct(target.filter(t=>ss.teachers.has(String(t.id))).length,target.length);
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>تحليل المواد والتغطية</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"جميع الأقسام")}</p></div><div class="v5-kpis"><b>${pct(teacherVisited,ts.length)}%<small>تغطية المعلمات</small></b><b>${pct(coveredSlots,slots)}%<small>تغطية المواد المستهدفة</small></b><b>${coveredSlots}/${slots}<small>معلمة × مادة مغطاة</small></b><b>${special.length}<small>تربية خاصة بنمط مستقل</small></b></div></div><div class="analysis-note">لا تُعد المعلمة مكتملة المواد إلا إذا وُجدت زيارة فعلية لكل مادة مسندة إليها. التوحد وصعوبات التعلم والدمج تُحسب بالمعلمة فقط.</div><h4>مصفوفة تغطية المعلمة × المادة</h4><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الحالة</th><th>تمت تغطيته</th><th>المتبقي</th><th>الزيارات الفعلية</th></tr></thead><tbody>${coverage.map(({t,c})=>`<tr><td>${esc(t.full_name)}</td><td>${esc(v7TeacherDeptLabel(t,dept))}</td><td>${v6CoverageBadge(c)}</td><td>${c.mode==="teacher_only"?(c.visitCount?"تمت زيارة المعلمة":"—"):(c.covered.map(x=>`✓ ${esc(x)}`).join("<br>")||"—")}</td><td>${c.mode==="teacher_only"?"لا يطبق تحليل المواد":(c.missing.map(x=>`◷ ${esc(x)}`).join("<br>")||"لا يوجد")}</td><td>${c.visitCount}</td></tr>`).join("")||`<tr><td colspan="6">لا توجد معلمات مرتبطة بالقسم.</td></tr>`}</tbody></table></div><h4>تحليل مادة: ${esc(subject||"—")}</h4><div class="v5-kpis"><b>${target.length}<small>معلمات يدرسن المادة</small></b><b>${ss.teachers.size}<small>تم رصدهن في المادة</small></b><b>${ss.rows.length}<small>زيارات المادة الفعلية</small></b><b>${subjectPct}%<small>تغطية المادة</small></b></div><div class="v5-priority-grid">${ss.priority.map(([c,x])=>`<div><strong>م${c}</strong><b>${pct(x.partial,x.total)}%</b><small>يفي جزئيًا • ${x.partial}/${x.total} رصدًا</small></div>`).join("")||"لا توجد بيانات معايير كافية لهذه المادة"}</div></article>`;
+}
+
+
+
+
+/* =========================================================
+   V7.1 — VERIFIED SUBJECT ALIASES + LEADERSHIP UI BINDING
+========================================================= */
+function v71BindLeadershipControls(){
+  ["leadershipObserverFilter","leadershipMonthFilter","leadershipDeptFilter"].forEach(id=>{
+    const el=$(id); if(!el || el.dataset.v71Bound==="1") return;
+    el.dataset.v71Bound="1";
+    el.addEventListener("change",()=>renderLeadershipTracking());
+  });
+  const btn=document.querySelector('#leadershipTrackingView .btn-primary');
+  if(btn && btn.dataset.v71Bound!=="1"){
+    btn.dataset.v71Bound="1";
+    btn.addEventListener("click",()=>renderLeadershipTracking());
+  }
+}
+function v71FindLeadershipProfile(value){
+  if(!value) return null;
+  return profiles.find(p=>String(p.id)===String(value)) ||
+         profiles.find(p=>String(p.user_id||"")===String(value)) ||
+         profiles.find(p=>v6Norm(p.full_name||p.email)===v6Norm(value));
+}
+// Stable select values even if a profile schema uses user_id instead of id.
+function v71LeadershipValue(p){ return String(p?.id ?? p?.user_id ?? p?.email ?? p?.full_name ?? ""); }
+function v7EnsureFilterOptions(){
+  const force=(id,rows,ph,vf,lf)=>{const el=$(id);if(!el)return;const old=el.value;v5FillSelect(id,rows,ph,vf,lf);if(old&&[...el.options].some(o=>o.value===old))el.value=old;};
+  const months=availableMonths();
+  force("leadershipMonthFilter",months,"كل الأشهر",x=>x,x=>v5MonthLabel(x)); force("followupMonthFilter",months,"كل الأشهر",x=>x,x=>v5MonthLabel(x)); force("dept360MonthFilter",months,"كل الأشهر",x=>x,x=>v5MonthLabel(x));
+  force("leadershipDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name); force("followupDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name); force("dept360Filter",activeRows(departments),"اختر القسم",x=>x.id,x=>x.name);
+  force("leadershipObserverFilter",v5LeadershipProfiles(),"اختر عضو القيادة",x=>v71LeadershipValue(x),x=>`${x.full_name||x.email} — ${leadershipLevel(x)}`);
+  v71BindLeadershipControls();
+}
+function v71ObserverMatches(v,selected){
+  const p=v71FindLeadershipProfile(selected); if(!p) return false;
+  const ids=[p.id,p.user_id].filter(x=>x!==undefined&&x!==null).map(String);
+  return ids.includes(String(v.observer_id));
+}
+function renderLeadershipTracking(){
+  v7EnsureFilterOptions(); const out=$("leadershipTrackingOutput"); if(!out)return;
+  const selected=$("leadershipObserverFilter")?.value||"", month=$("leadershipMonthFilter")?.value||availableMonths()[0]||"", dept=$("leadershipDeptFilter")?.value||"";
+  const p=v71FindLeadershipProfile(selected);
+  if(!p){out.innerHTML=`<article class="panel"><div class="empty-state">اختاري عضو القيادة لعرض سجل التغطية بالتفصيل.</div></article>`;return;}
+  const raw=v7ScopeRows(month,dept);
+  // Resolve actual DB observer id from the selected profile, then use the central grouping engine.
+  const matchingRaw=raw.filter(v=>v71ObserverMatches(v,selected));
+  const actual=v7VisitGroups(raw.filter(v=>["قيادة عليا","قيادة وسطى"].includes(leadershipLevel(v5Profile(v.observer_id)))))
+    .filter(g=>g.some(v=>matchingRaw.includes(v)))
+    .map(g=>{const own=g.find(v=>matchingRaw.includes(v));return {...own,_shared:g.length>1,_members:g,_actualKey:v7ActualVisitKey(own)};});
+  const ts=v61TeachersForDept(dept),visited=new Set(actual.map(v=>String(v.teacher_id))),notVisited=ts.filter(t=>!visited.has(String(t.id)));
+  const rows=[...visited].map(id=>{const t=teachers.find(x=>String(x.id)===id),vs=actual.filter(v=>String(v.teacher_id)===id).sort((a,b)=>String(b.visit_date).localeCompare(String(a.visit_date))),c=t?v6TeacherSubjectCoverage(t,raw):null;return `<tr><td>${esc(v5TeacherName(id))}</td><td>${esc(t?v7TeacherDeptLabel(t,dept):v5DeptName(vs[0]?.department_id))}</td><td>${vs.map(v=>`${esc(formatDate(v.visit_date))} — <strong>${esc(v7ActualSubject(v))}</strong> — ${esc(ratingLabel(v.overall_rating))}${v._shared?` — 👥 مشتركة (${v._members.map(x=>esc(v5ObserverName(x.observer_id))).join(" + ")})`:""}`).join("<br>")}</td><td>${c?.mode==="teacher_only"?"متابعة بالمعلمة":(c?.covered.join("، ")||"—")}</td><td>${c?.mode==="teacher_only"?"لا يطبق":(c?.missing.join("، ")||"لا يوجد")}</td></tr>`;}).join("");
+  const partial=ts.filter(t=>visited.has(String(t.id))&&v6TeacherCoverageMode(t)==="subject_based"&&v6TeacherSubjectCoverage(t,raw).missing.length);
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>تقرير متابعة زيارات ${esc(p.full_name||p.email||"")}</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"جميع الأقسام")} • ${esc(leadershipLevel(p))}</p></div><div class="v5-kpis"><b>${actual.length}<small>زيارات فعلية</small></b><b>${visited.size}<small>معلمات تمت زيارتهن</small></b><b>${notVisited.length}<small>لم تتم زيارتهن</small></b><b>${partial.length}<small>زارتهن وبقيت مواد</small></b></div></div><h4>تمت زيارتهن — المادة والحكم</h4><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الزيارة / المادة / الحكم</th><th>المغطى</th><th>المتبقي</th></tr></thead><tbody>${rows||`<tr><td colspan="5">لا توجد زيارات لهذا العضو في النطاق.</td></tr>`}</tbody></table></div><h4>لم تتم زيارتهن</h4><div class="v5-chip-list">${notVisited.map(t=>`<span>${esc(t.full_name)} <small>• ${esc(v7TeacherDeptLabel(t,dept))}</small></span>`).join("")||"<span>اكتملت تغطية المعلمات.</span>"}</div><div class="analysis-note">العداد للزيارات الفعلية بعد دمج الزيارة المشتركة. تغطية المواد تُقرأ من المواد المسندة لكل معلمة، وليس من مادة الزيارة الوحيدة.</div></article>`;
+}
+
+
 /* =========================================================
    BOOT
 ========================================================= */
@@ -11431,3 +12193,812 @@ document.addEventListener(
   "DOMContentLoaded",
   boot
 );
+
+/* =========================================================
+   V7.2 INTEGRATED LEADERSHIP COMPLETION
+   All new views consume V7 central actual-visit engine.
+========================================================= */
+function v72FillSelect(id, options, placeholder){
+  const el=$(id); if(!el) return; const old=el.value;
+  el.innerHTML=(placeholder!==null?`<option value="">${esc(placeholder||"الكل")}</option>`:"")+options.map(x=>`<option value="${esc(x.value)}">${esc(x.label)}</option>`).join("");
+  if([...el.options].some(o=>o.value===old)) el.value=old;
+}
+function v72Months(){ return [...new Set(visits.map(v=>String(v.visit_date||"").slice(0,7)).filter(Boolean))].sort().reverse(); }
+function v72InitCommon(monthId,deptId){
+  if(monthId){ const m=$(monthId); if(m && !m.options.length){v72FillSelect(monthId,v72Months().map(x=>({value:x,label:v5MonthLabel(x)})),null); if(!m.value)m.value=v72Months()[0]||"";} }
+  if(deptId){ const d=$(deptId); if(d && d.options.length<=1){v72FillSelect(deptId,departments.map(x=>({value:String(x.id),label:x.name})),"كل الأقسام");} }
+}
+function v72Reliability(n){return n>=3?"مرتفعة":n===2?"متوسطة":n===1?"منخفضة":"غير متاحة";}
+function v72TeacherActual(tid,month=""){let r=visits.filter(v=>String(v.teacher_id)===String(tid)&&(!month||String(v.visit_date||"").startsWith(month)));return v7ActualVisits(r,{source:"official"});}
+function v72TeacherDept(t){const v=visits.find(x=>String(x.teacher_id)===String(t.id));return v7TeacherDeptLabel(t,v?.department_id||"");}
+function renderTeacher360(){
+  v72InitCommon("teacher360Month"); const tf=$("teacher360Filter"); if(tf&&!tf.options.length)v72FillSelect("teacher360Filter",teachers.map(t=>({value:String(t.id),label:t.full_name})),"اختاري المعلمة");
+  const out=$("teacher360Output"),tid=tf?.value,month=$("teacher360Month")?.value||""; if(!out)return;if(!tid){out.innerHTML='<article class="panel">اختاري المعلمة لعرض البطاقة.</article>';return;}
+  const t=teachers.find(x=>String(x.id)===String(tid)), raw=visits.filter(v=>String(v.teacher_id)===String(tid)&&(!month||String(v.visit_date||"").startsWith(month))), actual=v7ActualVisits(raw,{source:"official"}), cov=v6TeacherSubjectCoverage(t,raw),diag=v5TeacherDiagnosis(raw,tid);
+  const timeline=actual.sort((a,b)=>String(a.visit_date).localeCompare(String(b.visit_date))).map(v=>{const parts=v5CriteriaForVisit(v.id).filter(x=>num(x.rating)===1).map(x=>`م${x.criterion_no}`);return `<tr><td>${esc(formatDate(v.visit_date))}</td><td>${esc(v7ActualSubject(v))}</td><td>${esc(v5ObserverName(v.observer_id))}${v._shared?`<br><small>مشتركة: ${v._members.map(x=>esc(v5ObserverName(x.observer_id))).join(" + ")}</small>`:""}</td><td>${esc(ratingLabel(v.overall_rating))}</td><td>${parts.join("، ")||"—"}</td></tr>`}).join("");
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>${esc(t.full_name)}</h3><p>${esc(v72TeacherDept(t))} • ${esc(v5MonthLabel(month))}</p></div><div class="v5-kpis"><b>${actual.length}<small>زيارات فعلية</small></b><b>${esc(v72Reliability(actual.length))}<small>موثوقية القراءة</small></b><b>${v5Badge(diag)}<small>الحالة</small></b><b>${v6CoverageBadge(cov)}<small>تغطية المواد</small></b></div></div><h4>المواد</h4><p><strong>المسندة:</strong> ${cov.mode==="teacher_only"?"متابعة بالمعلمة":esc(cov.configured.join("، ")||"—")} &nbsp; <strong>المغطاة:</strong> ${esc(cov.covered?.join("، ")||"—")} &nbsp; <strong>المتبقية:</strong> ${esc(cov.missing?.join("، ")||"—")}</p><h4>الخط الزمني للزيارات</h4><div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>المادة</th><th>المقيم</th><th>الحكم</th><th>جزئي</th></tr></thead><tbody>${timeline||'<tr><td colspan="5">لا توجد زيارات في النطاق.</td></tr>'}</tbody></table></div><div class="analysis-note"><strong>قراءة المتابعة:</strong> ${esc(diag.reason)} • <strong>الإجراء:</strong> ${esc(diag.action||diag.recommendation||"استكمال الرصد حسب الحاجة")}</div></article>`;
+}
+function renderCriteriaMatrix(){
+  v72InitCommon("matrixMonth","matrixDept");const month=$("matrixMonth")?.value||"",dept=$("matrixDept")?.value||"",out=$("criteriaMatrixOutput");if(!out)return;const ts=dept?v61TeachersForDept(dept):teachers.filter(t=>visits.some(v=>String(v.teacher_id)===String(t.id)&&(!month||String(v.visit_date||"").startsWith(month))));
+  const rows=ts.map(t=>{const av=v7ActualVisits(v7ScopeRows(month,dept).filter(v=>String(v.teacher_id)===String(t.id)),{source:"official"});const cells=[];for(let c=1;c<=18;c++){let rr=[];av.forEach(v=>rr.push(...v5CriteriaForVisit(v.id).filter(x=>num(x.criterion_no)===c).map(x=>num(x.rating))));const partial=rr.filter(x=>x===1).length;cells.push(`<td title="${rr.length} رصد • ${partial} جزئي">${!rr.length?'—':partial?`◐ ${partial}/${rr.length}`:'✓'}</td>`)}return `<tr><td>${esc(t.full_name)}</td><td>${av.length}</td>${cells.join('')}</tr>`}).join('');
+  out.innerHTML=`<article class="panel v5-report"><h3>مصفوفة المعلمات × م1–م18</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"كل الأقسام")}</p><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>زيارات</th>${Array.from({length:18},(_,i)=>`<th>م${i+1}</th>`).join('')}</tr></thead><tbody>${rows||'<tr><td colspan="20">لا توجد بيانات.</td></tr>'}</tbody></table></div><div class="analysis-note">◐ يعني وجود تقييم جزئي في المعيار. ✓ يعني أن الرصد المتاح لا يتضمن جزئيًا. — لا يوجد رصد.</div></article>`;
+}
+function v72PriorityFor(t,raw){const av=v7ActualVisits(raw.filter(v=>String(v.teacher_id)===String(t.id)),{source:"official"}),cov=v6TeacherSubjectCoverage(t,raw),d=v5TeacherDiagnosis(raw,t.id);let score=0,reasons=[];if(!av.length){score+=60;reasons.push("لم تتم زيارتها");}if(cov.mode!=="teacher_only"&&cov.missing?.length){score+=20+cov.missing.length*3;reasons.push(`مواد متبقية: ${cov.missing.join("، ")}`);}if(d.level?.includes("رعاية")||d.status?.includes("رعاية")){score+=50;reasons.push("أولوية رعاية");}else if(d.level?.includes("دعم")||d.status?.includes("دعم")){score+=35;reasons.push("دعم مستهدف");}else if(d.level?.includes("تحقق")||d.status?.includes("تحقق")){score+=25;reasons.push("زيارة تحقق");}if(av.length===1){score+=10;reasons.push("موثوقية منخفضة");}return {t,av,cov,d,score,reasons};}
+function renderNextVisits(){v72InitCommon("nextVisitsMonth","nextVisitsDept");const month=$("nextVisitsMonth")?.value||"",dept=$("nextVisitsDept")?.value||"",out=$("nextVisitsOutput");if(!out)return;const raw=v7ScopeRows(month,dept),ts=dept?v61TeachersForDept(dept):teachers.filter(t=>visits.some(v=>String(v.teacher_id)===String(t.id))),items=ts.map(t=>v72PriorityFor(t,raw)).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);out.innerHTML=`<article class="panel v5-report"><h3>خطة الزيارات القادمة — ترتيب مقترح</h3><div class="table-wrap"><table><thead><tr><th>الأولوية</th><th>المعلمة</th><th>القسم</th><th>السبب</th><th>المادة المقترحة</th><th>زيارات فعلية</th></tr></thead><tbody>${items.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.t.full_name)}</td><td>${esc(v72TeacherDept(x.t))}</td><td>${esc(x.reasons.join(" • "))}</td><td>${esc(x.cov.mode==="teacher_only"?"متابعة المعلمة":(x.cov.missing?.[0]||"حسب أولوية الرصد"))}</td><td>${x.av.length}</td></tr>`).join('')||'<tr><td colspan="6">لا توجد أولويات في النطاق.</td></tr>'}</tbody></table></div><div class="analysis-note">الترتيب توصية قيادية وليس حكمًا آليًا؛ لا يفترض ضرورة تغطية كل مواد المعلمة في شهر واحد.</div></article>`;}
+function v72Quality(month){const raw=visits.filter(v=>!month||String(v.visit_date||"").startsWith(month)),issues=[];raw.forEach(v=>{if(!teachers.some(t=>String(t.id)===String(v.teacher_id)))issues.push([v.id,"زيارة بلا معلمة مرتبطة"]);if(!v.department_id)issues.push([v.id,"زيارة بلا قسم"]);if(!v.subject_id)issues.push([v.id,"زيارة بلا مادة"]);if(!v.observer_id)issues.push([v.id,"زيارة بلا مقيم"]);if(!v5CriteriaForVisit(v.id).length)issues.push([v.id,"زيارة بلا م1–م18"]);});teachers.forEach(t=>{if(!visits.some(v=>String(v.teacher_id)===String(t.id)))return;const cfg=v6ConfiguredSubjects(t);if(v6TeacherCoverageMode(t)!=="teacher_only"&&!cfg.length)issues.push([t.id,`المعلمة ${t.full_name}: لا توجد مواد مسندة معروفة`]);});return issues;}
+function renderDataQuality(){v72InitCommon("qualityMonth");const month=$("qualityMonth")?.value||"",out=$("dataQualityOutput");if(!out)return;const issues=v72Quality(month);out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>سجل تدقيق جودة البيانات</h3><p>${esc(v5MonthLabel(month))}</p></div><div class="v5-kpis"><b>${issues.length}<small>ملاحظات تحتاج مراجعة</small></b></div></div><div class="table-wrap"><table><thead><tr><th>المرجع</th><th>الملاحظة</th></tr></thead><tbody>${issues.map(x=>`<tr><td>${esc(String(x[0]))}</td><td>${esc(x[1])}</td></tr>`).join('')||'<tr><td colspan="2">لا توجد ملاحظات آلية في النطاق.</td></tr>'}</tbody></table></div></article>`;}
+function renderDecisionCenter(){v72InitCommon("decisionMonth","decisionDept");const month=$("decisionMonth")?.value||"",dept=$("decisionDept")?.value||"",out=$("decisionCenterOutput");if(!out)return;const raw=v7ScopeRows(month,dept),ts=dept?v61TeachersForDept(dept):teachers.filter(t=>visits.some(v=>String(v.teacher_id)===String(t.id))),items=ts.map(t=>v72PriorityFor(t,raw)),unvisited=items.filter(x=>!x.av.length),partial=items.filter(x=>x.cov.mode!=="teacher_only"&&x.cov.missing?.length),support=items.filter(x=>x.reasons.some(r=>/دعم|رعاية|تحقق/.test(r))),quality=v72Quality(month);out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>الملخص القيادي التنفيذي</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"كل المدرسة")}</p></div><div class="v5-kpis"><b>${unvisited.length}<small>لم تتم زيارتهن</small></b><b>${partial.length}<small>تغطية مواد جزئية</small></b><b>${support.length}<small>تحتاج تحقق/دعم</small></b><b>${quality.length}<small>ملاحظات جودة</small></b></div></div><h4>ما القرار المطلوب الآن؟</h4><div class="v5-priority-grid"><div><strong>استكمال التغطية</strong><b>${unvisited.length}</b><small>${esc(unvisited.slice(0,5).map(x=>x.t.full_name).join("، ")||"لا توجد")}</small></div><div><strong>تغطية مواد</strong><b>${partial.length}</b><small>${esc(partial.slice(0,5).map(x=>x.t.full_name).join("، ")||"لا توجد")}</small></div><div><strong>تحقق ودعم</strong><b>${support.length}</b><small>${esc(support.slice(0,5).map(x=>x.t.full_name).join("، ")||"لا توجد")}</small></div><div><strong>جودة البيانات</strong><b>${quality.length}</b><small>${quality.length?"تراجع قبل اعتماد التقرير":"لا توجد ملاحظات آلية"}</small></div></div><div class="analysis-note">هذه الشاشة تلخص القرار؛ التفاصيل موجودة في خطة الزيارات، مركز المتابعة، تحليل المواد، وجودة البيانات.</div></article>`;}
+
+/* =========================================================
+   STABLE CONSOLIDATION LAYER — 2026-10-08
+   Preserves legacy screens; fixes relationship resolution, all-month scope,
+   shared-visit counting, department aliases, leadership filters and source filters.
+========================================================= */
+function v8Norm(x){return v6Norm(x||"");}
+function v8Profile(ref){
+  const r=String(ref??"");
+  return profiles.find(p=>[p.id,p.user_id,p.email].some(x=>x!=null&&String(x)===r)) ||
+         profiles.find(p=>v8Norm(p.full_name||p.email)===v8Norm(r)) || null;
+}
+// All legacy code now benefits from user_id/id tolerant profile lookup.
+function v5Profile(id){ return v8Profile(id); }
+
+const V8_DEPT_MAP=[
+  {keys:["امانه","أمانة","شوق","هبه","هبة"], dept:["الانجليزي","الإنجليزية","اللغة الإنجليزية"]},
+  {keys:["فاطمه الحامد","فاطمة الحامد","عاليه","عالية","الاء","آلاء"], dept:["العربي","العربية والتربية الإسلامية","اللغة العربية والتربية الإسلامية"]},
+  {keys:["اروي","أروى","نوره سعيد","نورة سعيد","جوري"], dept:["الرياضيات والعلوم"]},
+  {keys:["حنان","مها بسيوني","هيفاء","دانه جمال","دانة جمال","شريفه الرويعي","شريفة الرويعي","ختام","فاطمه المطر","فاطمة المطر","نجود","لطيفه","لطيفة","نوره يحي","نورة يحي"], dept:["نظام فصل"]},
+  {keys:["امال","آمال","مني الحلو","منى الحلو","مشاعل","مروه محمد صالح","مروة محمد صالح","مروه الحسيني","مروة الحسيني","نوال المراغي","فاطمه الرويعي","فاطمة الرويعي","فاطمه البشير","فاطمة البشير","نوال الحربي"], dept:["المواد الاثرائيه","المواد الإثرائية"]},
+  {keys:["عبير الطيري"], dept:["الاجتماعيات والمواطنه","الاجتماعيات والمواطنة"]},
+  {keys:["ساجده","ساجدة","مها الشمري","نوره الدوسري","نورة الدوسري"], dept:["التوحد"]},
+  {keys:["زينب اسماعيل","زينب إسماعيل"], dept:["صعوبات التعلم"]},
+  {keys:["ايمان عبدالرضا","إيمان عبدالرضا"], dept:["الدمج"]}
+];
+function v8AliasMatch(full,alias){const ft=new Set(v8Norm(full).split(" ").filter(Boolean)),at=v8Norm(alias).split(" ").filter(Boolean);return at.length&&at.every(x=>ft.has(x));}
+function v8DeptIdForTeacher(t){
+  const row=V8_DEPT_MAP.find(r=>r.keys.some(k=>v8AliasMatch(t?.full_name||"",k)));
+  if(row){
+    const d=departments.find(d=>row.dept.some(n=>v8Norm(d.name).includes(v8Norm(n))||v8Norm(n).includes(v8Norm(d.name))));
+    if(d) return String(d.id);
+  }
+  if(t?.department_id!=null&&String(t.department_id)!=="") return String(t.department_id);
+  const vr=visits.filter(v=>String(v.teacher_id)===String(t?.id)&&v.department_id!=null&&String(v.department_id)!=="")
+    .sort((a,b)=>String(b.visit_date||"").localeCompare(String(a.visit_date||"")))[0];
+  return vr?String(vr.department_id):"";
+}
+function v61TeacherDeptIds(t){const id=v8DeptIdForTeacher(t);return id?[id]:[];}
+function v61TeacherDeptName(t,preferredDept=""){
+  const id=v8DeptIdForTeacher(t); if(preferredDept&&String(preferredDept)===String(id))return v5DeptName(id);
+  return id?v5DeptName(id):"غير محدد";
+}
+function v61TeachersForDept(dept){const all=activeRows(teachers);return !dept?all:all.filter(t=>String(v8DeptIdForTeacher(t))===String(dept));}
+
+function v8VisitSubject(v){const s=v6VisitSubject(v);return s&&s!=="غير محدد"?s:"";}
+function v8Compat(a,b){
+  if(String(a.teacher_id)!==String(b.teacher_id))return false;
+  if(String(a.visit_date||"").slice(0,10)!==String(b.visit_date||"").slice(0,10))return false;
+  const fields=[[v8VisitSubject(a),v8VisitSubject(b)],[v7NormToken(a.grade_section||""),v7NormToken(b.grade_section||"")],[v7NormToken(a.period_name||""),v7NormToken(b.period_name||"")]];
+  return fields.every(([x,y])=>!x||!y||x===y);
+}
+function v8Level(v){return leadershipLevel(v8Profile(v.observer_id));}
+function v8ActualVisits(rows,{source="official"}={}){
+  let r=(rows||[]).filter(v=>["قيادة عليا","قيادة وسطى"].includes(v8Level(v)));
+  if(source==="upper")return r.filter(v=>v8Level(v)==="قيادة عليا").map(v=>({...v,_shared:false,_members:[v]}));
+  if(source==="middle")return r.filter(v=>v8Level(v)==="قيادة وسطى").map(v=>({...v,_shared:false,_members:[v]}));
+  // official/both: merge only cross-level observations that represent the same actual lesson.
+  const used=new Set(),out=[];
+  for(let i=0;i<r.length;i++){
+    if(used.has(i))continue;
+    const a=r[i], group=[a]; used.add(i);
+    for(let j=i+1;j<r.length;j++){
+      if(used.has(j))continue; const b=r[j];
+      if(v8Level(a)!==v8Level(b)&&v8Compat(a,b)){group.push(b);used.add(j);}
+    }
+    const chosen=group.find(v=>v8Level(v)==="قيادة عليا")||group[0];
+    out.push({...chosen,_shared:group.length>1,_members:group});
+  }
+  return out;
+}
+function v7ActualVisits(rows,{source="official",observerId=""}={}){
+  if(observerId){
+    const p=v8Profile(observerId); if(!p)return [];
+    const own=(rows||[]).filter(v=>v8Profile(v.observer_id)===p || [p.id,p.user_id].filter(Boolean).map(String).includes(String(v.observer_id)));
+    // personal report counts each actual lesson once for that member; shared metadata retained.
+    const all=v8ActualVisits(rows,{source:"official"});
+    return own.map(v=>{const shared=all.find(x=>(x._members||[]).includes(v));return shared?{...v,_shared:shared._shared,_members:shared._members}:{...v,_shared:false,_members:[v]};});
+  }
+  return v8ActualVisits(rows,{source});
+}
+function v5ApprovedVisits(rows){return v8ActualVisits(rows,{source:"official"});}
+function v4AcceptedVisits(rows,source=v4AnalysisSource()){return v8ActualVisits(rows,{source:source==="all"?"both":source});}
+
+function v8MonthValue(id){return $(id)?.value??"";}
+function v8Scope(month,dept){
+  return visits.filter(v=>(!month||monthKey(v.visit_date)===month)&&(!dept||String(v8DeptIdForTeacher(teachers.find(t=>String(t.id)===String(v.teacher_id))||{}))===String(dept)));
+}
+function v7ScopeRows(month,dept){return v8Scope(month,dept);}
+function v5RowsForScope(month,dept){return v8Scope(month,dept);}
+
+function v8Fill(id,items,placeholder,valueFn=x=>x,labelFn=x=>x){
+  const el=$(id);if(!el)return;const old=el.value;
+  el.innerHTML=`<option value="">${esc(placeholder)}</option>`+items.map(x=>`<option value="${esc(valueFn(x))}">${esc(labelFn(x))}</option>`).join("");
+  if([...el.options].some(o=>o.value===old))el.value=old;
+}
+function v8InitFilters(){
+  const months=availableMonths();
+  ["leadershipMonthFilter","followupMonthFilter","dept360MonthFilter","subjectCoverageMonth","teacher360Month","matrixMonth","nextVisitsMonth","decisionMonth","qualityMonth"].forEach(id=>v8Fill(id,months,"كل الأشهر",x=>x,x=>v5MonthLabel(x)));
+  ["leadershipDeptFilter","followupDeptFilter","subjectCoverageDept","matrixDept","nextVisitsDept","decisionDept"].forEach(id=>v8Fill(id,activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name));
+  v8Fill("dept360Filter",activeRows(departments),"اختاري القسم",x=>x.id,x=>x.name);
+  v8Fill("leadershipObserverFilter",v5LeadershipProfiles(),"اختاري عضو القيادة",x=>String(x.id??x.user_id??x.email),x=>`${x.full_name||x.email} — ${leadershipLevel(x)}`);
+  v8Fill("teacher360Filter",activeRows(teachers),"اختاري المعلمة",x=>x.id,x=>x.full_name);
+}
+function renderLeadershipTracking(){
+  v8InitFilters();const out=$("leadershipTrackingOutput");if(!out)return;
+  const selected=$("leadershipObserverFilter")?.value||"",month=v8MonthValue("leadershipMonthFilter"),dept=$("leadershipDeptFilter")?.value||"",p=v8Profile(selected);
+  if(!p){out.innerHTML='<article class="panel"><div class="empty-state">اختاري عضو القيادة لعرض سجل التغطية بالتفصيل.</div></article>';return;}
+  const raw=v8Scope(month,dept),actual=v7ActualVisits(raw,{observerId:selected}),ts=v61TeachersForDept(dept),visited=new Set(actual.map(v=>String(v.teacher_id))),notVisited=ts.filter(t=>!visited.has(String(t.id)));
+  const body=[...visited].map(id=>{const t=teachers.find(x=>String(x.id)===id),vs=actual.filter(v=>String(v.teacher_id)===id).sort((a,b)=>String(b.visit_date).localeCompare(String(a.visit_date))),cov=t?v6TeacherSubjectCoverage(t,raw):null;return `<tr><td>${esc(t?.full_name||v5TeacherName(id))}</td><td>${esc(t?v61TeacherDeptName(t,dept):"غير محدد")}</td><td>${vs.map(v=>`${esc(formatDate(v.visit_date))} — ${esc(v7ActualSubject(v)||"غير محدد")} — ${esc(ratingLabel(v.overall_rating))}${v._shared?` — 👥 مشتركة (${v._members.map(m=>esc(v5ObserverName(m.observer_id))).join(" + ")})`:""}`).join("<br>")}</td><td>${cov?.mode==="teacher_only"?"متابعة بالمعلمة":esc(cov?.covered?.join("، ")||"—")}</td><td>${cov?.mode==="teacher_only"?"لا يطبق":esc(cov?.missing?.join("، ")||"لا يوجد")}</td></tr>`}).join("");
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>تقرير متابعة زيارات ${esc(p.full_name||p.email||"")}</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"جميع الأقسام")}</p></div><div class="v5-kpis"><b>${actual.length}<small>زيارات فعلية</small></b><b>${visited.size}<small>معلمات تمت زيارتهن</small></b><b>${notVisited.length}<small>لم تتم زيارتهن</small></b></div></div><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الزيارة / المادة / الحكم</th><th>المغطى</th><th>المتبقي</th></tr></thead><tbody>${body||'<tr><td colspan="5">لا توجد زيارات لهذا العضو في النطاق.</td></tr>'}</tbody></table></div><h4>لم تتم زيارتهن</h4><div class="v5-chip-list">${notVisited.map(t=>`<span>${esc(t.full_name)} • ${esc(v61TeacherDeptName(t,dept))}</span>`).join("")||"<span>اكتملت التغطية.</span>"}</div></article>`;
+}
+function renderTeacher360(){
+  v8InitFilters();const out=$("teacher360Output"),tid=$("teacher360Filter")?.value||"",month=v8MonthValue("teacher360Month");if(!out)return;if(!tid){out.innerHTML='<article class="panel">اختاري المعلمة لعرض البطاقة.</article>';return;}
+  const t=teachers.find(x=>String(x.id)===String(tid)),raw=visits.filter(v=>String(v.teacher_id)===String(tid)&&(!month||monthKey(v.visit_date)===month)),actual=v8ActualVisits(raw,{source:"official"}),cov=v6TeacherSubjectCoverage(t,raw),diag=v5TeacherDiagnosis(raw,tid);
+  const timeline=actual.sort((a,b)=>String(a.visit_date).localeCompare(String(b.visit_date))).map(v=>`<tr><td>${esc(formatDate(v.visit_date))}</td><td>${esc(v7ActualSubject(v)||"غير محدد")}</td><td>${esc(v5ObserverName(v.observer_id))}${v._shared?`<br><small>مشتركة: ${v._members.map(m=>esc(v5ObserverName(m.observer_id))).join(" + ")}</small>`:""}</td><td>${esc(ratingLabel(v.overall_rating))}</td></tr>`).join("");
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>${esc(t?.full_name||"")}</h3><p>${esc(v61TeacherDeptName(t))} • ${esc(v5MonthLabel(month))}</p></div><div class="v5-kpis"><b>${actual.length}<small>زيارات فعلية</small></b><b>${esc(v72Reliability(actual.length))}<small>موثوقية القراءة</small></b><b>${v5Badge(diag)}<small>الحالة</small></b><b>${v6CoverageBadge(cov)}<small>تغطية المواد</small></b></div></div><p><strong>المسندة:</strong> ${cov.mode==="teacher_only"?"متابعة بالمعلمة":esc(cov.configured.join("، ")||"—")} &nbsp; <strong>المغطاة:</strong> ${esc(cov.covered?.join("، ")||"—")} &nbsp; <strong>المتبقية:</strong> ${esc(cov.missing?.join("، ")||"—")}</p><div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>المادة</th><th>المقيم</th><th>الحكم</th></tr></thead><tbody>${timeline||'<tr><td colspan="4">لا توجد زيارات في النطاق.</td></tr>'}</tbody></table></div></article>`;
+}
+
+// Monthly/overall source filter without deleting legacy analysis.
+const v8LegacyMonthlyScopeRows=monthlyScopeRows;
+monthlyScopeRows = function(month){const r=v8LegacyMonthlyScopeRows(month),src=$("monthlyLeadershipSource")?.value||"official";return v8ActualVisits(r,{source:src});};
+const v8LegacyOverallFilteredRows=overallFilteredRows;
+overallFilteredRows = function(){const r=v8LegacyOverallFilteredRows(),src=$("overallLeadershipSource")?.value||"official";return v8ActualVisits(r,{source:src});};
+
+// Preserve all-month choice and refresh the affected screen immediately.
+document.addEventListener("change",e=>{
+  const id=e.target?.id;
+  if(id==="monthlyLeadershipSource")renderMonthly();
+  if(id==="overallLeadershipSource")renderOverall();
+  if(["leadershipObserverFilter","leadershipMonthFilter","leadershipDeptFilter"].includes(id))renderLeadershipTracking();
+  if(["teacher360Filter","teacher360Month"].includes(id))renderTeacher360();
+});
+
+// Initialize stable selectors after data load/render cycle.
+const v8OldRenderAll=renderAll;
+renderAll = function(){v8OldRenderAll();v8InitFilters();};
+
+/* =========================================================
+   LEADERSHIP TRACKING HOTFIX 2 — 2026-10-08
+   Resolve the visible selected leader robustly and match visits by the
+   profile's real DB id/user_id. Does not mutate Supabase.
+========================================================= */
+function v9SelectedLeadershipProfile(){
+  const el=$("leadershipObserverFilter");
+  if(!el) return null;
+  const value=String(el.value||"").trim();
+  let p=v8Profile(value)||v71FindLeadershipProfile(value);
+  if(p) return p;
+  const label=String(el.selectedOptions?.[0]?.textContent||"").split("—")[0].trim();
+  if(label){
+    p=profiles.find(x=>v8Norm(x.full_name||x.email)===v8Norm(label)) ||
+      profiles.find(x=>v8AliasMatch(x.full_name||x.email,label));
+  }
+  return p||null;
+}
+function v9EnsureLeadershipFilters(){
+  const obs=$("leadershipObserverFilter");
+  if(obs && obs.options.length<=1){
+    v8Fill("leadershipObserverFilter",v5LeadershipProfiles(),"اختاري عضو القيادة",x=>String(x.id??x.user_id??x.email??x.full_name),x=>`${x.full_name||x.email} — ${leadershipLevel(x)}`);
+  }
+  const mon=$("leadershipMonthFilter");
+  if(mon && mon.options.length<=1) v8Fill("leadershipMonthFilter",availableMonths(),"كل الأشهر",x=>x,x=>v5MonthLabel(x));
+  const dep=$("leadershipDeptFilter");
+  if(dep && dep.options.length<=1) v8Fill("leadershipDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name);
+}
+renderLeadershipTracking = function(){
+  v9EnsureLeadershipFilters();
+  const out=$("leadershipTrackingOutput"); if(!out)return;
+  const p=v9SelectedLeadershipProfile();
+  const month=$("leadershipMonthFilter")?.value||"";
+  const dept=$("leadershipDeptFilter")?.value||"";
+  if(!p){out.innerHTML='<article class="panel"><div class="empty-state">اختاري عضو القيادة لعرض سجل التغطية بالتفصيل.</div></article>';return;}
+  const ids=new Set([p.id,p.user_id].filter(x=>x!=null&&String(x)!=="").map(String));
+  const raw=v8Scope(month,dept);
+  const ownRaw=raw.filter(v=>ids.has(String(v.observer_id)));
+  // For each visit made by this leader, attach the cross-level shared visit metadata.
+  const officialGroups=v8ActualVisits(raw,{source:"official"});
+  const actual=[]; const seen=new Set();
+  ownRaw.forEach(v=>{
+    const shared=officialGroups.find(x=>(x._members||[]).some(m=>String(m.id)===String(v.id)));
+    const key=shared?`g:${(shared._members||[]).map(m=>String(m.id)).sort().join("|")}`:`v:${v.id}`;
+    if(seen.has(key)) return; seen.add(key);
+    actual.push(shared?{...v,_shared:shared._shared,_members:shared._members}:{...v,_shared:false,_members:[v]});
+  });
+  const ts=v61TeachersForDept(dept);
+  const visited=new Set(actual.map(v=>String(v.teacher_id)));
+  const notVisited=ts.filter(t=>!visited.has(String(t.id)));
+  const body=[...visited].map(id=>{
+    const t=teachers.find(x=>String(x.id)===id);
+    const vs=actual.filter(v=>String(v.teacher_id)===id).sort((a,b)=>String(b.visit_date).localeCompare(String(a.visit_date)));
+    const cov=t?v6TeacherSubjectCoverage(t,raw):null;
+    return `<tr><td>${esc(t?.full_name||v5TeacherName(id))}</td><td>${esc(t?v61TeacherDeptName(t,dept):"غير محدد")}</td><td>${vs.map(v=>`${esc(formatDate(v.visit_date))} — ${esc(v7ActualSubject(v)||"غير محدد")} — ${esc(ratingLabel(v.overall_rating))}${v._shared?` — 👥 مشتركة (${v._members.map(m=>esc(v5ObserverName(m.observer_id))).join(" + ")})`:""}`).join("<br>")}</td><td>${cov?.mode==="teacher_only"?"متابعة بالمعلمة":esc(cov?.covered?.join("، ")||"—")}</td><td>${cov?.mode==="teacher_only"?"لا يطبق":esc(cov?.missing?.join("، ")||"لا يوجد")}</td></tr>`;
+  }).join("");
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>تقرير متابعة زيارات ${esc(p.full_name||p.email||"")}</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"جميع الأقسام")} • ${esc(leadershipLevel(p))}</p></div><div class="v5-kpis"><b>${actual.length}<small>زيارات فعلية</small></b><b>${visited.size}<small>معلمات تمت زيارتهن</small></b><b>${notVisited.length}<small>لم تتم زيارتهن</small></b></div></div><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الزيارة / المادة / الحكم</th><th>المغطى</th><th>المتبقي</th></tr></thead><tbody>${body||'<tr><td colspan="5">لا توجد زيارات لهذا العضو في النطاق المحدد.</td></tr>'}</tbody></table></div><h4>لم تتم زيارتهن</h4><div class="v5-chip-list">${notVisited.map(t=>`<span>${esc(t.full_name)} • ${esc(v61TeacherDeptName(t,dept))}</span>`).join("")||"<span>اكتملت التغطية.</span>"}</div><div class="analysis-note">تمت مطابقة عضو القيادة مع observer_id الحقيقي. الزيارة المشتركة تُعرض مرة واحدة في تقرير العضو مع الاحتفاظ بالمشاركين.</div></article>`;
+};
+
+
+/* =========================================================
+   LEADERSHIP TRACKING HOTFIX 3 — selected-option authoritative
+   The select option itself is authoritative even if profile lookup is late/empty.
+========================================================= */
+function v10LeadershipSelection(){
+  const el=$("leadershipObserverFilter");
+  if(!el) return null;
+  const value=String(el.value||"").trim();
+  if(!value) return null;
+  const opt=el.selectedOptions?.[0];
+  const text=String(opt?.textContent||"").trim();
+  const name=text.split("—")[0].trim();
+  const level=text.includes("قيادة وسطى")?"قيادة وسطى":text.includes("قيادة عليا")?"قيادة عليا":"";
+  const profile=v8Profile(value)||v71FindLeadershipProfile(value)||profiles.find(x=>v8Norm(x.full_name||x.email)===v8Norm(name))||profiles.find(x=>v8AliasMatch(x.full_name||x.email,name))||null;
+  const ids=new Set([value,profile?.id,profile?.user_id].filter(x=>x!=null&&String(x)!=="").map(String));
+  return {value,name:name||profile?.full_name||profile?.email||"عضو القيادة",level:level||leadershipLevel(profile||{}),profile,ids};
+}
+function v10VisitBelongsToLeader(v,sel){
+  if(sel.ids.has(String(v.observer_id))) return true;
+  const vp=v8Profile(v.observer_id);
+  if(!vp) return false;
+  if(sel.profile && (vp===sel.profile || [sel.profile.id,sel.profile.user_id].filter(Boolean).map(String).includes(String(vp.id)) || [sel.profile.id,sel.profile.user_id].filter(Boolean).map(String).includes(String(vp.user_id)))) return true;
+  const vn=vp.full_name||vp.email||"";
+  return !!sel.name && (v8Norm(vn)===v8Norm(sel.name) || v8AliasMatch(vn,sel.name) || v8AliasMatch(sel.name,vn));
+}
+renderLeadershipTracking = function(){
+  v9EnsureLeadershipFilters();
+  const out=$("leadershipTrackingOutput"); if(!out)return;
+  const sel=v10LeadershipSelection();
+  const month=$("leadershipMonthFilter")?.value||"";
+  const dept=$("leadershipDeptFilter")?.value||"";
+  if(!sel){out.innerHTML='<article class="panel"><div class="empty-state">اختاري عضو القيادة لعرض سجل التغطية بالتفصيل.</div></article>';return;}
+  const raw=v8Scope(month,dept);
+  const ownRaw=raw.filter(v=>v10VisitBelongsToLeader(v,sel));
+  const officialGroups=v8ActualVisits(raw,{source:"official"});
+  const actual=[],seen=new Set();
+  ownRaw.forEach(v=>{
+    const shared=officialGroups.find(x=>(x._members||[]).some(m=>String(m.id)===String(v.id)));
+    const key=shared?`g:${(shared._members||[]).map(m=>String(m.id)).sort().join("|")}`:`v:${v.id}`;
+    if(seen.has(key))return;seen.add(key);
+    actual.push(shared?{...v,_shared:shared._shared,_members:shared._members}:{...v,_shared:false,_members:[v]});
+  });
+  const ts=v61TeachersForDept(dept),visited=new Set(actual.map(v=>String(v.teacher_id))),notVisited=ts.filter(t=>!visited.has(String(t.id)));
+  const body=[...visited].map(id=>{
+    const t=teachers.find(x=>String(x.id)===id),vs=actual.filter(v=>String(v.teacher_id)===id).sort((a,b)=>String(b.visit_date).localeCompare(String(a.visit_date))),cov=t?v6TeacherSubjectCoverage(t,raw):null;
+    return `<tr><td>${esc(t?.full_name||v5TeacherName(id))}</td><td>${esc(t?v61TeacherDeptName(t,dept):"غير محدد")}</td><td>${vs.map(v=>`${esc(formatDate(v.visit_date))} — ${esc(v7ActualSubject(v)||"غير محدد")} — ${esc(ratingLabel(v.overall_rating))}${v._shared?` — 👥 مشتركة (${v._members.map(m=>esc(v5ObserverName(m.observer_id))).join(" + ")})`:""}`).join("<br>")}</td><td>${cov?.mode==="teacher_only"?"متابعة بالمعلمة":esc(cov?.covered?.join("، ")||"—")}</td><td>${cov?.mode==="teacher_only"?"لا يطبق":esc(cov?.missing?.join("، ")||"لا يوجد")}</td></tr>`;
+  }).join("");
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>تقرير متابعة زيارات ${esc(sel.name)}</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"جميع الأقسام")} • ${esc(sel.level||"")}</p></div><div class="v5-kpis"><b>${actual.length}<small>زيارات فعلية</small></b><b>${visited.size}<small>معلمات تمت زيارتهن</small></b><b>${notVisited.length}<small>لم تتم زيارتهن</small></b></div></div><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الزيارة / المادة / الحكم</th><th>المغطى</th><th>المتبقي</th></tr></thead><tbody>${body||'<tr><td colspan="5">لا توجد زيارات لهذا العضو في النطاق المحدد.</td></tr>'}</tbody></table></div><h4>لم تتم زيارتهن</h4><div class="v5-chip-list">${notVisited.map(t=>`<span>${esc(t.full_name)} • ${esc(v61TeacherDeptName(t,dept))}</span>`).join("")||"<span>اكتملت التغطية.</span>"}</div><div class="analysis-note">مصدر اختيار عضو القيادة هو الخيار المحدد نفسه؛ ثم تتم مطابقة observer_id بالمعرّف والملف والاسم. الزيارة المشتركة تظهر مرة واحدة.</div></article>`;
+};
+
+/* =========================================================
+   LEADERSHIP TRACKING HOTFIX 4 — deterministic UI refresh
+   The visible selection is authoritative and all three controls
+   refresh the report immediately. No Supabase mutation.
+========================================================= */
+function v11LeadershipSelection(){
+  const el=$("leadershipObserverFilter");
+  if(!el) return null;
+  const value=String(el.value||"").trim();
+  const opt=el.options?.[el.selectedIndex];
+  if(!value || !opt) return null;
+  const label=String(opt.textContent||"").trim();
+  const name=label.split("—")[0].trim();
+  const level=label.includes("قيادة وسطى")?"قيادة وسطى":label.includes("قيادة عليا")?"قيادة عليا":"";
+  const profile=profiles.find(p=>String(p.id??"")===value)||profiles.find(p=>String(p.user_id??"")===value)||profiles.find(p=>v8Norm(p.full_name||p.email)===v8Norm(name))||null;
+  const ids=new Set([value,profile?.id,profile?.user_id].filter(x=>x!=null&&String(x)!=="").map(String));
+  return {value,name:name||profile?.full_name||profile?.email||label,level:level||leadershipLevel(profile||{}),profile,ids};
+}
+function v11LeaderOwnRows(raw,sel){
+  return (raw||[]).filter(v=>{
+    if(sel.ids.has(String(v.observer_id))) return true;
+    const vp=v8Profile(v.observer_id);
+    if(!vp) return false;
+    if([vp.id,vp.user_id].filter(x=>x!=null).map(String).some(id=>sel.ids.has(id))) return true;
+    const n=vp.full_name||vp.email||"";
+    return !!sel.name && v8Norm(n)===v8Norm(sel.name);
+  });
+}
+renderLeadershipTracking = function(){
+  v9EnsureLeadershipFilters();
+  const out=$("leadershipTrackingOutput"); if(!out)return;
+  const sel=v11LeadershipSelection();
+  const month=$("leadershipMonthFilter")?.value||"";
+  const dept=$("leadershipDeptFilter")?.value||"";
+  if(!sel){out.innerHTML='<article class="panel"><div class="empty-state">اختاري عضو القيادة لعرض سجل التغطية بالتفصيل.</div></article>';return;}
+  const raw=v8Scope(month,dept);
+  const ownRaw=v11LeaderOwnRows(raw,sel);
+  const officialGroups=v8ActualVisits(raw,{source:"official"});
+  const actual=[],seen=new Set();
+  for(const v of ownRaw){
+    const shared=officialGroups.find(x=>(x._members||[]).some(m=>String(m.id)===String(v.id)));
+    const key=shared?`g:${(shared._members||[]).map(m=>String(m.id)).sort().join("|")}`:`v:${v.id}`;
+    if(seen.has(key))continue; seen.add(key);
+    actual.push(shared?{...v,_shared:!!shared._shared,_members:shared._members}:{...v,_shared:false,_members:[v]});
+  }
+  const ts=v61TeachersForDept(dept),visited=new Set(actual.map(v=>String(v.teacher_id))),notVisited=ts.filter(t=>!visited.has(String(t.id)));
+  const body=[...visited].map(id=>{
+    const t=teachers.find(x=>String(x.id)===id),vs=actual.filter(v=>String(v.teacher_id)===id).sort((a,b)=>String(b.visit_date).localeCompare(String(a.visit_date))),cov=t?v6TeacherSubjectCoverage(t,raw):null;
+    return `<tr><td>${esc(t?.full_name||v5TeacherName(id))}</td><td>${esc(t?v61TeacherDeptName(t,dept):"غير محدد")}</td><td>${vs.map(v=>`${esc(formatDate(v.visit_date))} — ${esc(v7ActualSubject(v)||"غير محدد")} — ${esc(ratingLabel(v.overall_rating))}${v._shared?` — 👥 مشتركة (${v._members.map(m=>esc(v5ObserverName(m.observer_id))).join(" + ")})`:""}`).join("<br>")}</td><td>${cov?.mode==="teacher_only"?"متابعة بالمعلمة":esc(cov?.covered?.join("، ")||"—")}</td><td>${cov?.mode==="teacher_only"?"لا يطبق":esc(cov?.missing?.join("، ")||"لا يوجد")}</td></tr>`;
+  }).join("");
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>تقرير متابعة زيارات ${esc(sel.name)}</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"جميع الأقسام")} • ${esc(sel.level||"")}</p></div><div class="v5-kpis"><b>${actual.length}<small>زيارات فعلية</small></b><b>${visited.size}<small>معلمات تمت زيارتهن</small></b><b>${notVisited.length}<small>لم تتم زيارتهن</small></b></div></div><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الزيارة / المادة / الحكم</th><th>المغطى</th><th>المتبقي</th></tr></thead><tbody>${body||'<tr><td colspan="5">لا توجد زيارات لهذا العضو في النطاق المحدد.</td></tr>'}</tbody></table></div><h4>لم تتم زيارتهن</h4><div class="v5-chip-list">${notVisited.map(t=>`<span>${esc(t.full_name)} • ${esc(v61TeacherDeptName(t,dept))}</span>`).join("")||"<span>اكتملت التغطية.</span>"}</div><div class="analysis-note">عضو القيادة المحدد: <strong>${esc(sel.name)}</strong>. الزيارة المشتركة تُحسب مرة واحدة مع الاحتفاظ بالمشاركين.</div></article>`;
+};
+
+// Also bind after data has loaded; onchange attributes remain as a deterministic fallback.
+document.addEventListener("change",function(e){
+  if(["leadershipObserverFilter","leadershipMonthFilter","leadershipDeptFilter"].includes(e.target?.id)) renderLeadershipTracking();
+});
+
+/* =========================================================
+   LEADERSHIP TRACKING FIX 5 — VERIFIED DB LINKAGE
+   Supabase schema verified 2026-10-08:
+   visits.observer_id === profiles.id (UUID).
+   The selected <option>.value is therefore used directly as observer_id.
+   No profile/user_id inference is required for loading the member's visits.
+========================================================= */
+function v12LeadershipSelection(){
+  const el=$("leadershipObserverFilter");
+  if(!el) return null;
+  const observerId=String(el.value||"").trim();
+  if(!observerId) return null;
+  const opt=el.options?.[el.selectedIndex];
+  const label=String(opt?.textContent||"").trim();
+  const name=(label.split("—")[0]||"").trim();
+  const profile=profiles.find(p=>String(p.id)===observerId)||null;
+  return {
+    observerId,
+    profile,
+    name:name||profile?.full_name||profile?.email||"عضو القيادة",
+    level:leadershipLevel(profile||{}) || (label.includes("قيادة وسطى")?"قيادة وسطى":label.includes("قيادة عليا")?"قيادة عليا":"")
+  };
+}
+
+function v12LeadershipActualRows(raw,observerId){
+  // DB-authoritative match: visits.observer_id -> profiles.id.
+  const own=(raw||[]).filter(v=>String(v.observer_id)===String(observerId));
+  const allGroups=v7VisitGroups((raw||[]).filter(v=>["قيادة عليا","قيادة وسطى"].includes(leadershipLevel(v5Profile(v.observer_id)))));
+  const result=[];
+  const seen=new Set();
+  for(const v of own){
+    const group=allGroups.find(g=>g.some(m=>String(m.id)===String(v.id))) || [v];
+    const key=group.map(m=>String(m.id)).sort().join("|");
+    if(seen.has(key)) continue;
+    seen.add(key);
+    result.push({...v,_shared:group.length>1,_members:group,_actualKey:v7ActualVisitKey(v)});
+  }
+  return result;
+}
+
+renderLeadershipTracking = function(){
+  // Never rebuild a populated selector here: doing so can erase the user's
+  // live selection during onchange. Populate only if the controls are empty.
+  v9EnsureLeadershipFilters();
+  const out=$("leadershipTrackingOutput"); if(!out) return;
+  const sel=v12LeadershipSelection();
+  const month=$("leadershipMonthFilter")?.value||"";
+  const dept=$("leadershipDeptFilter")?.value||"";
+  if(!sel){
+    out.innerHTML='<article class="panel"><div class="empty-state">اختاري عضو القيادة لعرض سجل التغطية بالتفصيل.</div></article>';
+    return;
+  }
+
+  const raw=v8Scope(month,dept);
+  const actual=v12LeadershipActualRows(raw,sel.observerId);
+  const ts=v61TeachersForDept(dept);
+  const visited=new Set(actual.map(v=>String(v.teacher_id)));
+  const notVisited=ts.filter(t=>!visited.has(String(t.id)));
+
+  const body=[...visited].map(id=>{
+    const t=teachers.find(x=>String(x.id)===id);
+    const vs=actual.filter(v=>String(v.teacher_id)===id).sort((a,b)=>String(b.visit_date).localeCompare(String(a.visit_date)));
+    const cov=t?v6TeacherSubjectCoverage(t,raw):null;
+    return `<tr>
+      <td>${esc(t?.full_name||v5TeacherName(id))}</td>
+      <td>${esc(t?v61TeacherDeptName(t,dept):v5DeptName(vs[0]?.department_id))}</td>
+      <td>${vs.map(v=>`${esc(formatDate(v.visit_date))} — <strong>${esc(v7ActualSubject(v)||"غير محدد")}</strong> — ${esc(ratingLabel(v.overall_rating))}${v._shared?` — 👥 مشتركة (${v._members.map(m=>esc(v5ObserverName(m.observer_id))).join(" + ")})`:""}`).join("<br>")}</td>
+      <td>${cov?.mode==="teacher_only"?"متابعة بالمعلمة":esc(cov?.covered?.join("، ")||"—")}</td>
+      <td>${cov?.mode==="teacher_only"?"لا يطبق":esc(cov?.missing?.join("، ")||"لا يوجد")}</td>
+    </tr>`;
+  }).join("");
+
+  const partial=ts.filter(t=>visited.has(String(t.id)) && v6TeacherCoverageMode(t)==="subject_based" && v6TeacherSubjectCoverage(t,raw).missing.length);
+  const monthText=v5MonthLabel(month);
+  out.innerHTML=`<article class="panel v5-report">
+    <div class="v5-report-head"><div>
+      <h3>تقرير متابعة زيارات ${esc(sel.name)}</h3>
+      <p>${esc(monthText)} • ${esc(dept?v5DeptName(dept):"جميع الأقسام")} • ${esc(sel.level||"")}</p>
+    </div><div class="v5-kpis">
+      <b>${actual.length}<small>زيارات فعلية</small></b>
+      <b>${visited.size}<small>معلمات تمت زيارتهن</small></b>
+      <b>${notVisited.length}<small>لم تتم زيارتهن</small></b>
+      <b>${partial.length}<small>زارتهن وبقيت مواد</small></b>
+    </div></div>
+    <h4>تمت زيارتهن — المادة والحكم</h4>
+    <div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الزيارة / المادة / الحكم</th><th>المغطى</th><th>المتبقي</th></tr></thead><tbody>${body||'<tr><td colspan="5">لا توجد زيارات لهذا العضو في النطاق المحدد.</td></tr>'}</tbody></table></div>
+    <h4>لم تتم زيارتهن في ${esc(monthText)}</h4>
+    <div class="v5-chip-list">${notVisited.map(t=>`<span>${esc(t.full_name)} • ${esc(v61TeacherDeptName(t,dept))}</span>`).join("")||"<span>اكتملت تغطية المعلمات ضمن النطاق.</span>"}</div>
+    <div class="analysis-note">الربط المعتمد: <strong>visits.observer_id = profiles.id</strong>. الزيارة المشتركة تُحسب مرة واحدة، ويظهر المشاركون دون مضاعفة الزيارة.</div>
+  </article>`;
+};
+
+/* =========================================================
+   FOLLOW-UP CENTER — VISIT / EVALUATOR TRANSPARENCY
+   Adds actual visit count and evaluator details to every teacher.
+   Shared visits count once and list all participating evaluators.
+========================================================= */
+function v13FollowupVisitDetails(raw, teacherId){
+  const actual=v7ActualVisits((raw||[]).filter(v=>String(v.teacher_id)===String(teacherId)),{source:"official"})
+    .slice().sort((a,b)=>String(a.visit_date).localeCompare(String(b.visit_date)));
+  const evaluatorCounts={};
+  actual.forEach(v=>{
+    const members=(v._shared && Array.isArray(v._members) && v._members.length)?v._members:[v];
+    members.forEach(m=>{
+      const name=v5ObserverName(m.observer_id)||"مقيم غير محدد";
+      evaluatorCounts[name]=(evaluatorCounts[name]||0)+1;
+    });
+  });
+  const countText=Object.entries(evaluatorCounts)
+    .sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ar"))
+    .map(([name,n])=>`${esc(name)}: ${n}`)
+    .join(" • ") || "—";
+  const detail=actual.map(v=>{
+    const members=(v._shared && Array.isArray(v._members) && v._members.length)?v._members:[v];
+    const names=members.map(m=>v5ObserverName(m.observer_id)||"مقيم غير محدد");
+    const evaluator=v._shared?`👥 مشتركة: ${names.map(esc).join(" + ")}`:esc(names[0]);
+    const official=v._shared?` <small>— الحكم الرسمي: ${esc(v5ObserverName(v.observer_id)||names[0])}</small>`:"";
+    return `<div class="v13-visit-line"><strong>${esc(formatDate(v.visit_date))}</strong> — ${evaluator} — ${esc(v7ActualSubject(v)||"غير محدد")} — ${esc(ratingLabel(v.overall_rating))}${official}</div>`;
+  }).join("") || "—";
+  return {actual,countText,detail};
+}
+
+renderFollowupCenter = function(){
+  v7EnsureFilterOptions();
+  const out=$("followupCenterOutput"); if(!out)return;
+  const month=$("followupMonthFilter")?.value||availableMonths()[0]||"";
+  const dept=$("followupDeptFilter")?.value||"";
+  const raw=v7ScopeRows(month,dept);
+  const ts=v61TeachersForDept(dept);
+  const list=ts.map(t=>({t,d:v5TeacherDiagnosis(raw,t.id),v:v13FollowupVisitDetails(raw,t.id)}))
+    .filter(x=>x.d.key!=="stable")
+    .sort((a,b)=>b.d.score-a.d.score||a.t.full_name.localeCompare(b.t.full_name,"ar"));
+  const count=k=>list.filter(x=>x.d.key===k).length;
+  const decision=d=>d.key==="priority"?"دعم مستهدف + إعادة رصد":d.key==="targeted"?"تدخل مهني موجه":d.key==="verify"?"زيارة مستقلة للتحقق":d.key==="initial"?"استكمال الرصد":"جدولة زيارة";
+  out.innerHTML=`<article class="panel v5-report">
+    <div class="v5-report-head"><div>
+      <h3>الحالات التي تحتاج إجراء — ${esc(v5MonthLabel(month))}</h3>
+      <p>${esc(dept?v5DeptName(dept):"جميع الأقسام")}</p>
+    </div><div class="v5-kpis">
+      <b>${count("priority")}<small>أولى بالرعاية</small></b>
+      <b>${count("targeted")}<small>دعم مستهدف</small></b>
+      <b>${count("verify")}<small>تحقق</small></b>
+      <b>${count("initial")}<small>قراءة أولية</small></b>
+      <b>${count("unvisited")}<small>لم تتم الزيارة</small></b>
+    </div></div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>المعلمة</th><th>القسم</th><th>الزيارات الفعلية</th><th>عدد الزيارات باسم المقيم</th><th>تفاصيل المقيم / الزيارة / الحكم</th><th>الحالة</th><th>لماذا؟</th><th>القرار المقترح</th>
+    </tr></thead><tbody>${list.map(({t,d,v})=>`<tr>
+      <td>${esc(t.full_name)}</td>
+      <td>${esc(v7TeacherDeptLabel(t,dept))}</td>
+      <td><strong>${v.actual.length}</strong></td>
+      <td>${v.countText}</td>
+      <td>${v.detail}</td>
+      <td>${v5Badge(d)}</td>
+      <td>${esc(d.reason)}</td>
+      <td>${decision(d)}</td>
+    </tr>`).join("")||`<tr><td colspan="8">لا توجد حالات متابعة.</td></tr>`}</tbody></table></div>
+    <div class="analysis-note"><strong>طريقة القراءة:</strong> «دعم مستهدف» يعني وجود مؤشرات جزئية في أكثر من معيار دون تكرار مستقل لنفس المعيار، أما «أولى بالرعاية» فتتطلب تكرار التقييم الجزئي لنفس المعيار عبر زيارات فعلية مستقلة. الزيارة المشتركة تُحسب زيارة فعلية واحدة، ويظهر جميع المقيمين المشاركين فيها، بينما يعتمد الحكم الرسمي على القيادة العليا عند وجودها.</div>
+  </article>`;
+};
+
+/* =========================================================
+   ALL-MONTHS LONGITUDINAL FIX — 2026-10-10
+   Blank month means ALL months everywhere. Never falls back to latest month.
+   In longitudinal views, show monthly visit count + status so progress is visible.
+========================================================= */
+function v14SelectedMonth(id){
+  const el=$(id); return el ? String(el.value ?? "") : "";
+}
+function v14MonthsInRows(rows){
+  return [...new Set((rows||[]).map(v=>monthKey(v.visit_date)).filter(Boolean))].sort();
+}
+function v14TeacherMonthly(raw, teacherId){
+  return v14MonthsInRows(raw).map(m=>{
+    const mr=(raw||[]).filter(v=>monthKey(v.visit_date)===m && String(v.teacher_id)===String(teacherId));
+    const av=v7ActualVisits(mr,{source:"official"});
+    const d=v5TeacherDiagnosis(mr,teacherId);
+    return {month:m,count:av.length,diag:d};
+  }).filter(x=>x.count>0);
+}
+function v14MonthlyCell(raw,teacherId){
+  const items=v14TeacherMonthly(raw,teacherId);
+  return items.length?items.map(x=>`<div><strong>${esc(v5MonthLabel(x.month))}:</strong> ${x.count} زيارة — ${v5Badge(x.diag)}</div>`).join(""):"—";
+}
+function v14Trend(raw,teacherId){
+  const a=v14TeacherMonthly(raw,teacherId); if(a.length<2)return "لا توجد مقارنة شهرية كافية";
+  const first=a[0],last=a[a.length-1];
+  if(last.diag.score<first.diag.score)return `تحسن: ${first.diag.label} ← ${last.diag.label}`;
+  if(last.diag.score>first.diag.score)return `يحتاج متابعة: ${first.diag.label} ← ${last.diag.label}`;
+  return `مستمر: ${last.diag.label}`;
+}
+
+renderFollowupCenter = function(){
+  v7EnsureFilterOptions(); const out=$("followupCenterOutput"); if(!out)return;
+  const month=v14SelectedMonth("followupMonthFilter"), dept=$("followupDeptFilter")?.value||"";
+  const raw=v7ScopeRows(month,dept), ts=v61TeachersForDept(dept);
+  const list=ts.map(t=>({t,d:v5TeacherDiagnosis(raw,t.id),v:v13FollowupVisitDetails(raw,t.id)}))
+    .filter(x=>x.d.key!=="stable").sort((a,b)=>b.d.score-a.d.score||a.t.full_name.localeCompare(b.t.full_name,"ar"));
+  const count=k=>list.filter(x=>x.d.key===k).length;
+  const decision=d=>d.key==="priority"?"دعم مستهدف + إعادة رصد":d.key==="targeted"?"تدخل مهني موجه":d.key==="verify"?"زيارة مستقلة للتحقق":d.key==="initial"?"استكمال الرصد":"جدولة زيارة";
+  const longitudinal=!month;
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>${longitudinal?"المتابعة التراكمية لكل الأشهر":`الحالات التي تحتاج إجراء — ${esc(v5MonthLabel(month))}`}</h3><p>${esc(dept?v5DeptName(dept):"جميع الأقسام")}</p></div><div class="v5-kpis"><b>${count("priority")}<small>أولى بالرعاية</small></b><b>${count("targeted")}<small>دعم مستهدف</small></b><b>${count("verify")}<small>تحقق</small></b><b>${count("initial")}<small>قراءة أولية</small></b><b>${count("unvisited")}<small>لم تتم الزيارة</small></b></div></div>
+  <div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>إجمالي الزيارات الفعلية</th>${longitudinal?"<th>التطور حسب الشهر</th><th>قراءة التطور</th>":""}<th>عدد الزيارات باسم المقيم</th><th>تفاصيل المقيم / الزيارة / الحكم</th><th>الحالة الحالية</th><th>لماذا؟</th><th>القرار المقترح</th></tr></thead><tbody>${list.map(({t,d,v})=>`<tr><td>${esc(t.full_name)}</td><td>${esc(v7TeacherDeptLabel(t,dept))}</td><td><strong>${v.actual.length}</strong></td>${longitudinal?`<td>${v14MonthlyCell(raw,t.id)}</td><td>${esc(v14Trend(raw,t.id))}</td>`:""}<td>${v.countText}</td><td>${v.detail}</td><td>${v5Badge(d)}</td><td>${esc(d.reason)}</td><td>${decision(d)}</td></tr>`).join("")||`<tr><td colspan="${longitudinal?10:8}">لا توجد حالات متابعة.</td></tr>`}</tbody></table></div>
+  <div class="analysis-note">${longitudinal?"كل الأشهر = نطاق تراكمي حقيقي، مع فصل نتيجة كل شهر حتى لا تختلط حالة سبتمبر بأكتوبر.":"النتيجة تخص الشهر المحدد فقط."} الزيارة المشتركة تُحسب مرة واحدة ويظهر جميع المقيمين.</div></article>`;
+};
+
+renderDepartment360 = function(){
+  v7EnsureFilterOptions(); const out=$("department360Output"); if(!out)return;
+  const dept=$("dept360Filter")?.value||"", month=v14SelectedMonth("dept360MonthFilter");
+  if(!dept){out.innerHTML='<article class="panel"><div class="empty-state">اختاري القسم لعرض تحليل 360°.</div></article>';return;}
+  const raw=v7ScopeRows(month,dept), actual=v7ActualVisits(raw,{source:"official"}), ts=v61TeachersForDept(dept), visited=new Set(actual.map(v=>String(v.teacher_id))), longitudinal=!month;
+  const diag=ts.map(t=>({t,d:v5TeacherDiagnosis(raw,t.id),n:actual.filter(v=>String(v.teacher_id)===String(t.id)).length,c:v6TeacherSubjectCoverage(t,raw)}));
+  const stats={}; actual.forEach(v=>v5CriteriaForVisit(v.id).forEach(r=>{const c=String(r.criterion_no);(stats[c]||={total:0,partial:0});stats[c].total++;if(num(r.rating)===1)stats[c].partial++;}));
+  const priorities=Object.entries(stats).sort((a,b)=>pct(b[1].partial,b[1].total)-pct(a[1].partial,a[1].total)).slice(0,5);
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>${esc(v5DeptName(dept))} — تحليل 360°</h3><p>${esc(v5MonthLabel(month))}</p></div><div class="v5-kpis"><b>${ts.length}<small>معلمات القسم</small></b><b>${visited.size}<small>تمت زيارتهن</small></b><b>${actual.length}<small>زيارات فعلية معتمدة</small></b><b>${pct(visited.size,ts.length)}%<small>تغطية القسم</small></b></div></div><h4>المعلمات وقراءة المتابعة</h4><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>${longitudinal?"إجمالي الزيارات":"زيارات فعلية"}</th>${longitudinal?"<th>الزيارات والحالة حسب الشهر</th><th>التطور</th>":""}<th>الحالة</th><th>تغطية المادة</th><th>المعايير الجزئية</th><th>القراءة</th></tr></thead><tbody>${diag.map(({t,d,n,c})=>`<tr><td>${esc(t.full_name)}</td><td>${n}</td>${longitudinal?`<td>${v14MonthlyCell(raw,t.id)}</td><td>${esc(v14Trend(raw,t.id))}</td>`:""}<td>${v5Badge(d)}</td><td>${v6CoverageBadge(c)}</td><td>${d.partial.length?`م${d.partial.join("، م")}`:"—"}</td><td>${esc(d.reason)}</td></tr>`).join("")||`<tr><td colspan="${longitudinal?8:6}">لا توجد معلمات مرتبطة بالقسم.</td></tr>`}</tbody></table></div><h4>أعلى أولويات المعايير داخل القسم</h4><div class="v5-priority-grid">${priorities.map(([c,x])=>`<div><strong>م${c}</strong><b>${pct(x.partial,x.total)}%</b><small>يفي جزئيًا • ${x.partial}/${x.total} رصدًا</small></div>`).join("")||"لا توجد بيانات معايير كافية"}</div><div class="analysis-note">${longitudinal?"تم جمع كل الأشهر مع إظهار حالة كل شهر منفصلة لقراءة التحسن أو الاستمرار.":"التحليل خاص بالشهر المحدد."}</div></article>`;
+};
+
+renderSubjectCoverage = function(){
+  const out=$("subjectCoverageOutput");if(!out)return;v6PrepareSubjectFilters();
+  const month=v14SelectedMonth("subjectCoverageMonth"),dept=$("subjectCoverageDept")?.value||"",chosen=$("subjectCoverageSubject")?.value||"",ts=v61TeachersForDept(dept),raw=v7ScopeRows(month,dept),coverage=ts.map(t=>({t,c:v6TeacherSubjectCoverage(t,raw)})),subjectBased=coverage.filter(x=>x.c.mode==="subject_based"&&x.c.configured.length),special=coverage.filter(x=>x.c.mode==="teacher_only"),slots=subjectBased.reduce((n,x)=>n+x.c.configured.length,0),coveredSlots=subjectBased.reduce((n,x)=>n+x.c.covered.length,0),teacherVisited=coverage.filter(x=>x.c.visitCount>0).length,allSubjects=v6AllConfiguredSubjects(ts),subject=chosen&&allSubjects.includes(chosen)?chosen:(allSubjects[0]||"");if($("subjectCoverageSubject")&&subject)$("subjectCoverageSubject").value=subject;const ss=subject?v6SubjectStats(raw,subject):{rows:[],teachers:new Set(),priority:[]},target=ts.filter(t=>v6ConfiguredSubjects(t).includes(subject)),subjectPct=pct(target.filter(t=>ss.teachers.has(String(t.id))).length,target.length),longitudinal=!month;
+  const rows=coverage.map(({t,c})=>`<tr><td>${esc(t.full_name)}</td><td>${esc(v61TeacherDeptName(t,dept))}</td><td>${v6CoverageBadge(c)}</td><td>${c.mode==="teacher_only"?"تمت زيارة المعلمة":esc(c.covered.join("، ")||"—")}</td><td>${c.mode==="teacher_only"?"لا يطبق تحليل المواد":esc(c.missing.join("، ")||"لا يوجد")}</td><td>${c.visitCount}</td>${longitudinal?`<td>${v14MonthlyCell(raw,t.id)}</td>`:""}</tr>`).join("");
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>تحليل المواد والتغطية</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"جميع الأقسام")}</p></div><div class="v5-kpis"><b>${teacherVisited}<small>معلمات تمت زيارتهن</small></b><b>${coveredSlots}/${slots}<small>مواد مغطاة/مسندة</small></b><b>${special.length}<small>متابعة بالمعلمة</small></b><b>${subjectPct}%<small>تغطية ${esc(subject||"المادة")}</small></b></div></div><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الحالة</th><th>تمت تغطيته</th><th>المتبقي</th><th>الزيارات الفعلية</th>${longitudinal?"<th>التغطية/الحالة حسب الشهر</th>":""}</tr></thead><tbody>${rows||`<tr><td colspan="${longitudinal?7:6}">لا توجد بيانات.</td></tr>`}</tbody></table></div><div class="analysis-note">${longitudinal?"في خيار كل الأشهر تُحسب التغطية على كامل الفترة، ويظهر بجانب كل معلمة تفصيل الزيارات والحالة شهريًا.":"التغطية محسوبة داخل الشهر المحدد."}</div></article>`;
+};
+
+renderTeacher360 = function(){
+  v8InitFilters();const out=$("teacher360Output"),tid=$("teacher360Filter")?.value||"",month=v14SelectedMonth("teacher360Month");if(!out)return;if(!tid){out.innerHTML='<article class="panel">اختاري المعلمة لعرض البطاقة.</article>';return;}
+  const t=teachers.find(x=>String(x.id)===String(tid)),raw=visits.filter(v=>String(v.teacher_id)===String(tid)&&(!month||monthKey(v.visit_date)===month)),actual=v8ActualVisits(raw,{source:"official"}),cov=v6TeacherSubjectCoverage(t,raw),diag=v5TeacherDiagnosis(raw,tid),longitudinal=!month;
+  const timeline=actual.sort((a,b)=>String(a.visit_date).localeCompare(String(b.visit_date))).map(v=>`<tr><td>${esc(formatDate(v.visit_date))}</td><td>${esc(v7ActualSubject(v)||"غير محدد")}</td><td>${esc(v5ObserverName(v.observer_id))}${v._shared?`<br><small>مشتركة: ${v._members.map(m=>esc(v5ObserverName(m.observer_id))).join(" + ")}</small>`:""}</td><td>${esc(ratingLabel(v.overall_rating))}</td></tr>`).join("");
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>${esc(t?.full_name||"")}</h3><p>${esc(v61TeacherDeptName(t))} • ${esc(v5MonthLabel(month))}</p></div><div class="v5-kpis"><b>${actual.length}<small>زيارات فعلية</small></b><b>${esc(v72Reliability(actual.length))}<small>موثوقية القراءة</small></b><b>${v5Badge(diag)}<small>الحالة</small></b><b>${v6CoverageBadge(cov)}<small>تغطية المواد</small></b></div></div>${longitudinal?`<h4>التطور الشهري</h4><div class="analysis-note">${v14MonthlyCell(raw,tid)}<br><strong>${esc(v14Trend(raw,tid))}</strong></div>`:""}<p><strong>المسندة:</strong> ${cov.mode==="teacher_only"?"متابعة بالمعلمة":esc(cov.configured.join("، ")||"—")} &nbsp; <strong>المغطاة:</strong> ${esc(cov.covered?.join("، ")||"—")} &nbsp; <strong>المتبقية:</strong> ${esc(cov.missing?.join("، ")||"—")}</p><div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>المادة</th><th>المقيم</th><th>الحكم</th></tr></thead><tbody>${timeline||'<tr><td colspan="4">لا توجد زيارات في النطاق.</td></tr>'}</tbody></table></div></article>`;
+};
+
+// Keep the blank "all months" value untouched and refresh every analytical screen that has a month selector.
+document.addEventListener("change",function(e){
+  const id=e.target?.id;
+  if(id==="followupMonthFilter")renderFollowupCenter();
+  if(["dept360MonthFilter","dept360Filter"].includes(id))renderDepartment360();
+  if(["subjectCoverageMonth","subjectCoverageDept","subjectCoverageSubject"].includes(id))renderSubjectCoverage();
+  if(["teacher360Month","teacher360Filter"].includes(id))renderTeacher360();
+});
+
+/* =========================================================
+   CENTRAL DATA RESOLUTION + QUALITY AUDIT PATCH — 2026-10-10
+   One resolver for visit subject; audit raw gaps without hiding them.
+========================================================= */
+function v14RawVisitSubject(v){
+  const s=v6SubjectNameById(v?.subject_id);
+  return s && s!=="غير محدد" ? s : "";
+}
+function v14TeacherForVisit(v){
+  return teachers.find(t=>String(t.id)===String(v?.teacher_id)) || null;
+}
+function v14AssignedSubjectsForVisit(v){
+  const t=v14TeacherForVisit(v);
+  if(!t || v6TeacherCoverageMode(t)==="teacher_only") return [];
+  return (v6ConfiguredSubjects(t)||[]).filter(x=>x && x!=="غير محدد");
+}
+// Central subject resolver used by all downstream screens that call v7ActualSubject.
+// Priority: raw visit subject -> subject on shared member -> teacher assignment(s) -> undefined.
+function v7ActualSubject(v){
+  let s=v14RawVisitSubject(v);
+  if(s) return s;
+  for(const m of (v?._members||[])){
+    s=v14RawVisitSubject(m);
+    if(s) return s;
+  }
+  const assigned=v14AssignedSubjectsForVisit(v);
+  if(assigned.length===1) return assigned[0];
+  if(assigned.length>1) return assigned.join(" / ");
+  return "غير محدد";
+}
+function v14VisitDept(v){
+  if(v?.department_id && maps().departments[String(v.department_id)]) return v5DeptName(v.department_id);
+  const t=v14TeacherForVisit(v);
+  if(t){
+    const ids=v61TeacherDeptIds(t);
+    if(ids.length) return ids.map(v5DeptName).filter(x=>x&&x!=="غير محدد").join(" / ") || "غير محدد";
+  }
+  return "غير محدد";
+}
+function v14QualityRows(month){
+  const raw=visits.filter(v=>!month||monthKey(v.visit_date)===month);
+  const issues=[];
+  const push=(v,type,note,severity="مراجعة")=>issues.push({ref:v?.id??v?.teacher_id??"—",month:monthKey(v?.visit_date)||"—",teacher:v?.teacher_id?v5TeacherName(v.teacher_id):"—",type,note,severity});
+  raw.forEach(v=>{
+    const t=v14TeacherForVisit(v);
+    if(!t) push(v,"ربط المعلمة","الزيارة لا ترتبط بمعلمة موجودة في جدول المعلمات.","حرج");
+    if(!v.department_id){
+      const fallback=v14VisitDept(v);
+      push(v,"القسم",fallback!=="غير محدد"?`قسم الزيارة غير مسجل؛ تم الاستدلال من تكليف المعلمة: ${fallback}.`:`قسم الزيارة غير مسجل ولا يوجد قسم بديل معروف.`,fallback!=="غير محدد"?"تنبيه":"حرج");
+    }
+    if(!v.subject_id){
+      const assigned=v14AssignedSubjectsForVisit(v);
+      const fallback=v7ActualSubject(v);
+      push(v,"المادة",fallback!=="غير محدد"?`مادة الزيارة غير مسجلة خامًا؛ العرض يستخدم تكليف المعلمة: ${fallback}${assigned.length>1?" (لا يمكن تحديد أي مادة منها تخص هذه الزيارة دون تسجيل المادة).":"."}`:"مادة الزيارة غير مسجلة ولا توجد مادة مسندة يمكن الاستدلال بها.",assigned.length===1?"تنبيه":"مراجعة");
+    } else if(!v14RawVisitSubject(v)) push(v,"المادة","subject_id موجود لكنه لا يطابق مادة معروفة في جدول المواد.","حرج");
+    if(!v.observer_id || !v8Profile(v.observer_id)) push(v,"المقيم",!v.observer_id?"الزيارة بلا مقيم مسجل.":"معرّف المقيم لا يطابق ملفًا معروفًا في profiles.","حرج");
+    const cr=v5CriteriaForVisit(v.id);
+    const nums=new Set(cr.map(x=>Number(x.criterion_no)).filter(n=>n>=1&&n<=18));
+    if(!cr.length) push(v,"م1–م18","الزيارة بلا أي تقييم للمعايير م1–م18.","حرج");
+    else if(nums.size<18) push(v,"م1–م18",`الزيارة تحتوي ${nums.size} من 18 معيارًا؛ ينقص ${18-nums.size} معيارًا.`,"مراجعة");
+  });
+  // Assignment quality for teachers who participate in the selected scope.
+  const tids=new Set(raw.map(v=>String(v.teacher_id)));
+  teachers.filter(t=>tids.has(String(t.id))).forEach(t=>{
+    if(v6TeacherCoverageMode(t)==="teacher_only") return;
+    const cfg=(v6ConfiguredSubjects(t)||[]).filter(x=>x&&x!=="غير محدد");
+    if(!cfg.length) issues.push({ref:t.id,month:month||"—",teacher:t.full_name,type:"تكليف المواد",note:"لا توجد مواد مسندة معروفة للمعلمة؛ يلزم مراجعة teacher_subjects/التكليف.",severity:"مراجعة"});
+  });
+  // Surface probable shared observations so the auditor can verify merge assumptions.
+  const actual=v7ActualVisits(raw,{source:"official"});
+  actual.filter(v=>v._shared).forEach(v=>issues.push({ref:v.id,month:monthKey(v.visit_date)||"—",teacher:v5TeacherName(v.teacher_id),type:"زيارة مشتركة",note:`تم دمجها كزيارة فعلية واحدة. المقيمون: ${(v._members||[]).map(m=>v5ObserverName(m.observer_id)).join(" + ")}. الحكم الرسمي من القيادة العليا عند توفرها.`,severity:"معلومة"}));
+  return issues.sort((a,b)=>String(a.month).localeCompare(String(b.month))||String(a.teacher).localeCompare(String(b.teacher),"ar"));
+}
+function v72Quality(month){return v14QualityRows(month);}
+function renderDataQuality(){
+  v72InitCommon("qualityMonth");
+  const month=$("qualityMonth")?.value||"",out=$("dataQualityOutput"); if(!out)return;
+  const issues=v14QualityRows(month);
+  const actionable=issues.filter(x=>x.severity!=="معلومة");
+  const months=[...new Set(issues.map(x=>x.month).filter(x=>x&&x!=="—"))].sort();
+  const monthSummary=!month&&months.length?`<div class="analysis-note"><strong>التوزيع الشهري:</strong> ${months.map(m=>`${esc(v5MonthLabel(m))}: ${issues.filter(x=>x.month===m&&x.severity!=="معلومة").length} ملاحظة`).join(" • ")}</div>`:"";
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>سجل تدقيق جودة البيانات</h3><p>${esc(v5MonthLabel(month))}</p></div><div class="v5-kpis"><b>${actionable.length}<small>ملاحظات تحتاج مراجعة</small></b><b>${issues.filter(x=>x.severity==="حرج").length}<small>حرجة</small></b><b>${issues.filter(x=>x.type==="المادة").length}<small>ملاحظات مادة</small></b><b>${issues.filter(x=>x.type==="زيارة مشتركة").length}<small>زيارات مشتركة مدققة</small></b></div></div>${monthSummary}<div class="table-wrap"><table><thead><tr><th>الشهر</th><th>المرجع</th><th>المعلمة</th><th>النوع</th><th>المستوى</th><th>الملاحظة</th></tr></thead><tbody>${issues.map(x=>`<tr><td>${esc(x.month==="—"?"—":v5MonthLabel(x.month))}</td><td>${esc(String(x.ref))}</td><td>${esc(x.teacher)}</td><td>${esc(x.type)}</td><td>${esc(x.severity)}</td><td>${esc(x.note)}</td></tr>`).join("")||'<tr><td colspan="6">لا توجد ملاحظات آلية في النطاق.</td></tr>'}</tbody></table></div><div class="analysis-note">التدقيق يفرّق بين <strong>البيانات الخام</strong> وبين القيم المستدل عليها للعرض. لذلك قد تُعرض المادة صحيحة في التقارير من تكليف المعلمة، مع بقاء تنبيه هنا بأن مادة الزيارة نفسها لم تُسجل في السجل الخام.</div></article>`;
+}
+
+/* =========================================================
+   V15 SUPPORT & FOLLOW-UP REGISTER — clear operational view
+   Built on top of the stable subject-id/quality version.
+========================================================= */
+function v15SupportInitFilters(){
+  const fill=(id,rows,placeholder,vf,lf)=>{const el=$(id);if(!el)return;const old=el.value;v5FillSelect(id,rows,placeholder,vf,lf);if(old&&[...el.options].some(o=>o.value===old))el.value=old;};
+  fill("supportMonthFilter",availableMonths(),"كل الأشهر",x=>x,x=>v5MonthLabel(x));
+  fill("supportDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name);
+  fill("supportTeacherFilter",activeRows(teachers),"كل المعلمات",x=>x.id,x=>x.full_name);
+}
+function v15SupportActionsForTeacher(id){return (supports||[]).filter(s=>String(s.teacher_id)===String(id));}
+function v15LatestSupportAction(id){return v15SupportActionsForTeacher(id).slice().sort((a,b)=>String(b.support_date||"").localeCompare(String(a.support_date||"")))[0]||null;}
+function v15TeacherVisits(rows,id){return v7ActualVisits((rows||[]).filter(v=>String(v.teacher_id)===String(id)),{source:"official"}).sort((a,b)=>String(a.visit_date).localeCompare(String(b.visit_date)));}
+function v15SupportState(t,scopeRows,allRows){
+  const current=v5TeacherDiagnosis(scopeRows,t.id), all=v5TeacherDiagnosis(allRows,t.id), acts=v15SupportActionsForTeacher(t.id), latest=v15LatestSupportAction(t.id);
+  const dbStatus=String(latest?.status||"").trim();
+  if(/مغلق/.test(dbStatus)) return {key:"closed",label:"مغلقة",reason:"تم إغلاق إجراء الدعم المسجل.",diag:current,latest,acts};
+  const allVisits=v15TeacherVisits(allRows,t.id);
+  const lastTwo=allVisits.slice(-2);
+  if(acts.length && lastTwo.length>=2){
+    const last=v5TeacherDiagnosis(lastTwo,t.id);
+    if(last.key==="stable") return {key:"improved",label:"تحسن",reason:"الرصد اللاحق لا يظهر مؤشرات جزئية متكررة في آخر زيارتين معتمدتين.",diag:current,latest,acts};
+  }
+  if(current.key==="priority") return {key:"priority",label:"أولى بالرعاية",reason:current.reason,diag:current,latest,acts};
+  if(current.key==="targeted") return {key:"targeted",label:"دعم مستهدف",reason:current.reason,diag:current,latest,acts};
+  if(current.key==="verify") return {key:"verify",label:"متابعة للتحقق",reason:current.reason,diag:current,latest,acts};
+  if(acts.length) return {key:"verify",label:"متابعة قائمة",reason:"يوجد إجراء دعم مسجل ويحتاج رصدًا لاحقًا لقياس الأثر.",diag:current,latest,acts};
+  return null;
+}
+function v15EvaluatorSummary(vs){
+  if(!vs.length)return "—";
+  const counts={};
+  vs.forEach(v=>(v._members?.length?v._members:[v]).forEach(m=>{const n=v5ObserverName(m.observer_id);counts[n]=(counts[n]||0)+1;}));
+  return Object.entries(counts).map(([n,c])=>`${esc(n)}: ${c}`).join(" • ");
+}
+function v15VisitTrail(vs){
+  if(!vs.length)return "—";
+  return vs.map(v=>{
+    const members=(v._members||[v]).map(m=>v5ObserverName(m.observer_id));
+    const who=v._shared?`مشتركة: ${members.join(" + ")}`:members[0];
+    return `${esc(formatDate(v.visit_date))} — ${esc(v7ActualSubject(v))} — ${esc(who)} — ${esc(ratingLabel(v.overall_rating))}`;
+  }).join("<br>");
+}
+function renderSupport(){
+  const out=$("supportContent");if(!out)return;
+  v15SupportInitFilters();
+  const month=$("supportMonthFilter")?.value||"", dept=$("supportDeptFilter")?.value||"", teacher=$("supportTeacherFilter")?.value||"", status=$("supportStatusFilter")?.value||"";
+  const scope=v7ScopeRows(month,dept), allDept=v7ScopeRows("",dept);
+  const candidates=activeRows(teachers).filter(t=>(!dept||v61TeacherDeptIds(t).some(id=>String(id)===String(dept)))&&(!teacher||String(t.id)===String(teacher)));
+  let items=candidates.map(t=>({t,state:v15SupportState(t,scope,allDept),vs:v15TeacherVisits(scope,t.id)})).filter(x=>x.state);
+  if(status)items=items.filter(x=>x.state.key===status);
+  const rank={priority:5,targeted:4,verify:3,improved:2,closed:1};items.sort((a,b)=>(rank[b.state.key]||0)-(rank[a.state.key]||0)||a.t.full_name.localeCompare(b.t.full_name,"ar"));
+  const cnt=k=>items.filter(x=>x.state.key===k).length;
+  const rows=items.map(({t,state,vs})=>{
+    const last=vs[vs.length-1], partial=state.diag?.partial||[], action=state.latest;
+    const actionText=action?`${esc(action.support_type||"دعم مسجل")}${action.support_date?` — ${esc(formatDate(action.support_date))}`:""}`:"لم يسجل تدخل بعد";
+    const next=state.key==="priority"?"تدخل مهني موجه + إعادة قياس":state.key==="targeted"?"تنفيذ دعم محدد ثم زيارة متابعة":state.key==="verify"?"زيارة مستقلة للتحقق":state.key==="improved"?"توثيق الأثر والنظر في الإغلاق":"أرشفة الحالة";
+    return `<tr><td><strong>${esc(t.full_name)}</strong></td><td>${esc(v7TeacherDeptLabel(t,dept))}</td><td>${v5Badge({key:state.key,label:state.label})}</td><td>${esc(state.reason)}</td><td>${vs.length}</td><td>${v15EvaluatorSummary(vs)}</td><td>${partial.length?`م${partial.join("، م")}`:"—"}</td><td>${actionText}</td><td>${last?esc(formatDate(last.visit_date)):"—"}</td><td>${esc(next)}</td></tr>`;
+  }).join("");
+  const detail=teacher&&items.length?`<article class="panel" style="margin-top:18px"><h3>المسار التفصيلي — ${esc(items[0].t.full_name)}</h3><p><strong>الزيارات والمقيمون والحكم</strong></p><div class="analysis-note">${v15VisitTrail(items[0].vs)}</div><p><strong>إجراءات الدعم المسجلة</strong></p><div class="analysis-note">${items[0].state.acts.length?items[0].state.acts.map(a=>`${esc(a.support_type||"دعم")} — ${esc(formatDate(a.support_date))} — ${esc(a.support_details||"بدون تفاصيل")}`).join("<br>"):"لا يوجد تدخل دعم مسجل في قاعدة البيانات حتى الآن."}</div></article>`:"";
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>سجل الدعم والمتابعة</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"جميع الأقسام")}</p></div><div class="v5-kpis"><b>${items.length}<small>حالات معروضة</small></b><b>${cnt("priority")}<small>أولى بالرعاية</small></b><b>${cnt("targeted")}<small>دعم مستهدف</small></b><b>${cnt("verify")}<small>تحقق</small></b><b>${cnt("improved")}<small>تحسن</small></b><b>${cnt("closed")}<small>مغلقة</small></b></div></div><div class="analysis-note"><strong>طريقة القراءة:</strong> هذه الصفحة لا تعتبر كل معلمة «حالة دعم مفتوحة». تظهر فقط الحالات التي لديها مؤشر متابعة فعلي أو إجراء دعم مسجل. «أولى بالرعاية» = تكرار مؤشر جزئي عبر زيارات مستقلة، «دعم مستهدف» = عدة مؤشرات جزئية دون تكرار مستقل، «متابعة للتحقق» = مؤشر يحتاج زيارة مستقلة، و«تحسن» = تحسن مثبت في الرصد اللاحق.</div><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>الحالة الحالية</th><th>سبب الحالة</th><th>زيارات فعلية</th><th>المقيمون وعدد زياراتهم</th><th>المعايير محل المتابعة</th><th>الدعم المنفذ</th><th>آخر رصد</th><th>الإجراء القادم</th></tr></thead><tbody>${rows||'<tr><td colspan="10">لا توجد حالات دعم/متابعة فعلية ضمن النطاق المحدد.</td></tr>'}</tbody></table></div></article>${detail}`;
+}
+
+/* =========================================================
+   ATHAR — PROFESSIONAL GROWTH & RECOGNITION
+   Read-only layer over the approved actual-visit engine.
+   It does not alter visit diagnoses, support states, or Supabase data.
+========================================================= */
+let ATHAR_TAB="dashboard";
+function setAtharTab(tab){ATHAR_TAB=tab||"dashboard";document.querySelectorAll("[data-athar-tab]").forEach(b=>b.classList.toggle("active",b.dataset.atharTab===ATHAR_TAB));renderAthar();}
+function atharFillFilters(){
+  const keep=(id,rows,placeholder,vf,lf)=>{const el=$(id);if(!el)return;const old=el.value;v5FillSelect(id,rows,placeholder,vf,lf);if(old&&[...el.options].some(o=>o.value===old))el.value=old;};
+  keep("atharMonth",availableMonths(),"كل الأشهر",x=>x,x=>v5MonthLabel(x));
+  keep("atharDept",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name);
+  keep("atharTeacher",activeRows(teachers),"كل المعلمات",x=>x.id,x=>x.full_name);
+}
+function atharCriterionRows(v){return v5CriteriaForVisit(v.id)||[];}
+function atharCriterionMap(v){const m={};atharCriterionRows(v).forEach(x=>m[String(x.criterion_no)]=num(x.rating));return m;}
+function atharCriterionName(c){const q=(criteria||[]).find(x=>String(x.criterion_no??x.no??x.id)===String(c));return q?.criterion_text||q?.text||q?.name||`المعيار م${c}`;}
+function atharCriterionLabel(c){return `م${c} — ${atharCriterionName(c)}`;}
+function atharMonthEnd(month){if(!month)return null;const [y,m]=month.split('-').map(Number);return new Date(y,m,0,23,59,59,999);}
+function atharRowsThrough(month,dept){const end=atharMonthEnd(month);return visits.filter(v=>(!end||new Date(String(v.visit_date).slice(0,10)+'T12:00:00')<=end)&&(!dept||String(v8DeptIdForTeacher(teachers.find(t=>String(t.id)===String(v.teacher_id))||{}))===String(dept)));}
+function atharTeacherActual(t,rows){return v7ActualVisits((rows||[]).filter(v=>String(v.teacher_id)===String(t.id)),{source:"official"}).sort((a,b)=>String(a.visit_date).localeCompare(String(b.visit_date)));}
+function atharEvidence(t,historyRows,periodRows=[]){
+  const av=atharTeacherActual(t,historyRows), pav=atharTeacherActual(t,periodRows), series={};
+  av.forEach(v=>{const m=atharCriterionMap(v);Object.entries(m).forEach(([c,r])=>{(series[c]||=[]).push({r,date:v.visit_date,visit:v});});});
+  const improved=[],repeatedStrong=[],sustainedStrong=[];
+  Object.entries(series).forEach(([c,a])=>{
+    if(a.length>=2 && a[a.length-1].r>a[0].r) improved.push({c,from:a[0].r,to:a[a.length-1].r,count:a.length});
+    const strong=a.filter(x=>x.r>=3); if(strong.length>=2) repeatedStrong.push({c,count:strong.length});
+    if(a.length>=3 && a.slice(-3).every(x=>x.r>=3)) sustainedStrong.push({c,count:3});
+  });
+  const evaluators=new Set();av.forEach(v=>(v._members||[v]).forEach(m=>evaluators.add(String(m.observer_id))));
+  let level={key:"start",label:"✨ بداية رحلة أثر",reason:av.length===1?"هذه أول زيارة فعلية مسجلة حتى الفترة المختارة؛ نحتاج رصدًا لاحقًا قبل استنتاج النمو.":"توجد بيانات رصد سابقة، لكن الدليل التراكمي لا يكفي بعد لمنح مستوى تكريم مهني."};
+  if(improved.length>=2) level={key:"growing",label:"🌱 نامية بأثر",reason:`تحسن مثبت في ${improved.length} معايير عبر زيارات فعلية مستقلة.`};
+  if(repeatedStrong.length>=2 && av.length>=2) level={key:"maker",label:"💎 صانعة أثر",reason:`قوة واضحة ومتكررة في ${repeatedStrong.length} معايير عبر زيارتين مستقلتين أو أكثر.`};
+  if(av.length>=3 && sustainedStrong.length>=2) level={key:"rolemodel",label:"🏆 قدوة في الممارسة",reason:`قوة مستدامة في ${sustainedStrong.length} معايير خلال آخر ثلاث زيارات مستقلة على الأقل${evaluators.size>1?"، مع تنوع المقيمين":""}.`};
+  const acts=v15SupportActionsForTeacher(t.id).slice().sort((a,b)=>String(a.support_date||"").localeCompare(String(b.support_date||"")));
+  const lastAct=acts[acts.length-1]||null;let supportImpact=null;
+  if(lastAct?.support_date){const before=av.filter(v=>String(v.visit_date)<String(lastAct.support_date)),after=av.filter(v=>String(v.visit_date)>=String(lastAct.support_date));if(before.length&&after.length){const b=atharCriterionMap(before[before.length-1]),a=atharCriterionMap(after[after.length-1]),g=[];Object.keys(a).forEach(c=>{if(b[c]!=null&&a[c]>b[c])g.push(c)});if(g.length)supportImpact={criteria:g,action:lastAct,after:after.length};}}
+  return {t,av,pav,series,improved,repeatedStrong,sustainedStrong,evaluators,level,acts,supportImpact};
+}
+function atharScope(){
+  const month=$("atharMonth")?.value||"",dept=$("atharDept")?.value||"",teacher=$("atharTeacher")?.value||"";
+  const periodRows=v7ScopeRows(month,dept),historyRows=atharRowsThrough(month,dept);
+  let ts=activeRows(teachers).filter(t=>(!dept||v61TeacherDeptIds(t).some(id=>String(id)===String(dept)))&&(!teacher||String(t.id)===String(teacher)));
+  const items=ts.map(t=>atharEvidence(t,historyRows,periodRows)).filter(x=>x.av.length);
+  return {month,dept,teacher,periodRows,historyRows,ts,items};
+}
+function atharLevelRank(k){return {rolemodel:4,maker:3,growing:2,start:1}[k]||0;}
+function atharWhy(x){return `<div class="athar-reason"><strong>لماذا؟</strong> ${esc(x.level.reason)}</div>`;}
+function atharOpenTeacher(id){showView("teacher360");const el=$("teacher360Filter");if(el){el.value=String(id);renderTeacher360();}}
+function atharEvidenceNames(x){const src=x.level.key==="rolemodel"?x.sustainedStrong:x.level.key==="maker"?x.repeatedStrong:x.improved;return src.slice(0,3).map(z=>atharCriterionLabel(z.c));}
+function atharDashboard(scope){
+  const {month,dept,items}=scope,count=k=>items.filter(x=>x.level.key===k).length,withGrowth=items.filter(x=>x.improved.length).length,withStrength=items.filter(x=>x.repeatedStrong.length).length,impact=items.filter(x=>x.supportImpact).length;
+  const top=items.slice().sort((a,b)=>atharLevelRank(b.level.key)-atharLevelRank(a.level.key)||b.improved.length-a.improved.length).slice(0,8);
+  return `<article class="panel v5-report"><div class="v5-report-head"><div><h3>لوحة أثر</h3><p>${esc(v5MonthLabel(month))} • ${esc(dept?v5DeptName(dept):"كل المدرسة")}</p></div><div class="v5-kpis"><b>${items.length}<small>رحلات مهنية مرصودة</small></b><b>${withGrowth}<small>ظهر لديهن نمو تراكمي</small></b><b>${withStrength}<small>قوة متكررة</small></b><b>${impact}<small>تحسن لاحق لدعم مسجل</small></b></div></div><div class="v5-kpis"><b>${count("rolemodel")}<small>قدوة في الممارسة</small></b><b>${count("maker")}<small>صانعة أثر</small></b><b>${count("growing")}<small>نامية بأثر</small></b><b>${count("start")}<small>بداية رحلة أثر</small></b></div><div class="analysis-note"><strong>منهجية أثر:</strong> الشهر يحدد فترة العرض، أما مستوى المعلمة فيُحسب تراكميًا من زياراتها السابقة حتى نهاية الفترة المختارة. الزيارة المشتركة لنفس الموقف الصفي تُحسب زيارة فعلية واحدة ويُعتمد تقييم القيادة العليا.</div><h4>أبرز الرحلات المهنية</h4><div class="athar-card-grid">${top.map(x=>`<div class="athar-recognition"><span class="athar-level">${x.level.label}</span><h3>${esc(x.t.full_name)}</h3><small>${esc(v7TeacherDeptLabel(x.t,dept))} • ${x.pav.length} هذا الشهر • ${x.av.length} تراكميًا</small>${atharWhy(x)}<button class="btn no-print" type="button" onclick="atharOpenTeacher('${esc(String(x.t.id))}')">فتح بطاقة 360°</button></div>`).join("")||"لا توجد بيانات رصد ضمن النطاق."}</div></article>`;
+}
+function atharMonth(scope){
+  let month=scope.month;if(!month){const ms=availableMonths();month=ms[0]||"";}
+  const items=scope.items.filter(x=>x.pav.length&&x.level.key!=="start").sort((a,b)=>atharLevelRank(b.level.key)-atharLevelRank(a.level.key));
+  return `<article class="panel v5-report"><div class="v5-report-head"><div><h3>أثر الشهر</h3><p>${esc(v5MonthLabel(month))} • الترشيح يعتمد على تاريخ المعلمة التراكمي حتى نهاية الشهر</p></div><div class="v5-kpis"><b>${items.length}<small>ترشيحات بدليل</small></b><b>${items.filter(x=>x.improved.length).length}<small>نمو تراكمي مرصود</small></b><b>${items.filter(x=>x.repeatedStrong.length).length}<small>قوة متكررة</small></b></div></div><div class="analysis-note">عدد «زيارات الشهر» هو عدد المواقف الصفية الفعلية بعد دمج الزيارة المشتركة، وليس عدد المقيمين.</div><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>القسم</th><th>المستوى المقترح</th><th>الدليل</th><th>زيارات الشهر</th><th>التراكمي حتى الشهر</th></tr></thead><tbody>${items.map(x=>`<tr><td>${esc(x.t.full_name)}</td><td>${esc(v7TeacherDeptLabel(x.t,scope.dept))}</td><td><span class="athar-level">${x.level.label}</span></td><td>${esc(x.level.reason)}${atharEvidenceNames(x).length?`<br><small>${atharEvidenceNames(x).map(esc).join(" • ")}</small>`:""}</td><td>${x.pav.length}</td><td>${x.av.length}</td></tr>`).join("")||'<tr><td colspan="6">لا توجد ترشيحات مستوفية للقواعد في هذه الفترة.</td></tr>'}</tbody></table></div></article>`;
+}
+function atharJourney(scope){
+  let item=scope.items.find(x=>String(x.t.id)===String(scope.teacher));if(!item&&scope.items.length===1)item=scope.items[0];
+  if(!item){
+    const cards=scope.items.map(x=>`<div class="athar-recognition"><span class="athar-level">${x.level.label}</span><h3>${esc(x.t.full_name)}</h3><small>${x.pav.length} زيارة في الفترة • ${x.av.length} زيارة تراكمية</small><button class="btn no-print" type="button" onclick="document.getElementById('atharTeacher').value='${esc(String(x.t.id))}';renderAthar()">عرض رحلة النمو</button></div>`).join("");
+    return `<article class="panel"><h3>رحلة النمو المهني</h3><div class="analysis-note">تعرض القائمة الرحلات التراكمية حتى نهاية الفترة المختارة. اختاري معلمة للتفاصيل.</div><div class="athar-card-grid">${cards||"لا توجد رحلات مهنية ضمن النطاق."}</div></article>`;
+  }
+  const steps=item.av.map(v=>{const m=atharCriterionMap(v),strong=Object.keys(m).filter(c=>m[c]>=3),partial=Object.keys(m).filter(c=>m[c]===1),members=[...(v._members||[v])],names=[...new Set(members.map(z=>v5ObserverName(z.observer_id)).filter(Boolean))];return `<div class="athar-step"><strong>${esc(formatDate(v.visit_date))}</strong> — ${esc(v7ActualSubject(v))}<br><small>${v._shared?`زيارة مشتركة: ${names.map(esc).join(" + ")}`:`المقيم: ${esc(names[0]||"—")}`}</small><div>الحكم السياقي المعتمد: ${esc(ratingLabel(v.overall_rating))}</div><div>قوة بارزة: ${strong.length?strong.slice(0,4).map(c=>esc(atharCriterionLabel(c))).join(" • "):"—"}</div><div>تحتاج متابعة: ${partial.length?partial.slice(0,4).map(c=>esc(atharCriterionLabel(c))).join(" • "):"—"}</div></div>`}).join("");
+  const impact=item.supportImpact?`<div class="analysis-note"><strong>تحسن لاحق لتدخل مسجل:</strong> بعد «${esc(item.supportImpact.action.support_type||"دعم مهني")}" ظهر تحسن في ${item.supportImpact.criteria.map(c=>esc(atharCriterionLabel(c))).join("، ")}. هذه علاقة زمنية مرصودة وليست إثباتًا سببيًا.</div>`:"";
+  return `<article class="panel v5-report"><div class="v5-report-head"><div><h3>رحلة النمو المهني — ${esc(item.t.full_name)}</h3><p>بطاقة متابعة مهنية خاصة • ${scope.month?`${item.pav.length} زيارة في ${esc(v5MonthLabel(scope.month))} • `:""}${item.av.length} زيارة فعلية تراكمية حتى نهاية الفترة</p></div><span class="athar-level">${item.level.label}</span></div>${atharWhy(item)}<div class="v5-kpis"><b>${item.pav.length}<small>زيارات الفترة</small></b><b>${item.av.length}<small>إجمالي تراكمي</small></b><b>${item.improved.length}<small>معايير تحسنت</small></b><b>${item.evaluators.size}<small>مقيمون شاركوا</small></b></div>${impact}<h4>الخط الزمني التراكمي</h4><div class="athar-timeline">${steps}</div><div class="analysis-note"><strong>الخطوة القادمة:</strong> ${item.level.key==="rolemodel"?"توثيق الممارسة وإتاحة مشاركة الخبرة.":item.level.key==="maker"?"متابعة استدامة القوة في زيارة لاحقة.":item.level.key==="growing"?"تثبيت التحسن وإعادة الرصد.":"استكمال الرصد قبل أي استنتاج مهني."}</div><button class="btn no-print" type="button" onclick="atharOpenTeacher('${esc(String(item.t.id))}')">فتح بطاقة المعلمة 360°</button></article>`;
+}
+function atharCardText(x){const names=atharEvidenceNames(x);const base=x.level.key==="growing"?"تقديرًا لنمو مهني مثبت":x.level.key==="maker"?"تقديرًا لقوة مهنية متكررة":"تقديرًا لاستدامة التميز المهني";return `${base} وفق مؤشرات استمارة الزيارة الصفية${names.length?`، ومن أبرزها: ${names.join("، ")}`:""}، استنادًا إلى ${x.av.length} زيارة فعلية مستقلة.`;}
+function atharCards(scope){
+  const items=scope.items.filter(x=>["growing","maker","rolemodel"].includes(x.level.key)).sort((a,b)=>atharLevelRank(b.level.key)-atharLevelRank(a.level.key));
+  return `<article class="panel v5-report"><div class="v5-report-head"><div><h3>بطاقات أثر للتكريم</h3><p>نسخة عامة آمنة: تعرض الممارسة الإيجابية ومصدر الدليل والفترة، ولا تعرض جوانب الضعف أو أسماء المقيمين.</p></div><div class="v5-kpis"><b>${items.length}<small>بطاقات مستحقة</small></b></div></div><div class="athar-card-grid">${items.map(x=>`<div class="athar-recognition athar-public-card"><div>✨ أثر | النمو والتميز المهني</div><h3>${esc(x.t.full_name)}</h3><span class="athar-level">${x.level.label}</span><p>${esc(atharCardText(x))}</p><small>${scope.month?esc(v5MonthLabel(scope.month))+" • ":""}مدرسة الرفاع الغربي الابتدائية للبنين</small><button class="btn no-print" type="button" onclick="atharPrintCard('${esc(String(x.t.id))}')">طباعة البطاقة</button></div>`).join("")||"لا توجد بطاقات استوفت قواعد التكريم في النطاق الحالي."}</div></article>`;
+}
+function atharPrintCard(id){
+  const scope=atharScope(),x=scope.items.find(a=>String(a.t.id)===String(id));if(!x)return;const text=atharCardText(x);
+  const w=window.open("","_blank","width=900,height=700");if(!w)return;const headerUrl=new URL("school-header.jpg",location.href).href;w.document.write(`<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>بطاقة أثر</title><style>body{font-family:Arial,Tahoma,sans-serif;padding:50px;text-align:center}img{max-width:100%;max-height:120px}.card{border:2px solid #bbb;border-radius:22px;padding:50px 35px;margin-top:25px}h1{font-size:34px}h2{font-size:28px}.level{font-size:24px;font-weight:700;margin:22px}p{font-size:19px;line-height:1.9}.period{font-size:16px;margin-top:16px}.foot{display:flex;justify-content:space-between;margin-top:55px;font-size:15px}@media print{button{display:none}}</style></head><body><img src="${headerUrl}"><div class="card"><h1>✨ بطاقة أثر</h1><h2>${esc(x.t.full_name)}</h2><div class="level">${x.level.label}</div><p>${esc(text)}</p><div class="period">${scope.month?esc(v5MonthLabel(scope.month))+" • ":""}${x.av.length} زيارة فعلية تراكمية</div><div class="foot"><span>إعداد: فاتن صلاح<br>اختصاصية مصادر التعلم</span><span>المديرة المساعدة: خلود الكعبي</span><span>مديرة المدرسة: أحلام السويدي</span></div></div><button onclick="window.print()">طباعة / حفظ PDF</button></body></html>`);w.document.close();
+}
+function renderAthar(){atharFillFilters();document.querySelectorAll("[data-athar-tab]").forEach(b=>b.classList.toggle("active",b.dataset.atharTab===ATHAR_TAB));const out=$("atharOutput");if(!out)return;const scope=atharScope();out.innerHTML=ATHAR_TAB==="month"?atharMonth(scope):ATHAR_TAB==="journey"?atharJourney(scope):ATHAR_TAB==="cards"?atharCards(scope):atharDashboard(scope);}
+

@@ -1,0 +1,23 @@
+V7 Central Engine QA — 2026-10-07
+
+Implemented:
+1) One central actual-visit key: teacher + date + period + grade/section.
+   - observer/lesson/subject intentionally excluded because shared legacy rows may differ or be blank.
+   - different period/grade stays a separate actual visit (protects genuine same-day visits).
+2) Official shared visit = one actual visit; senior leadership judgment wins.
+3) Individual leadership report = one actual visit, but keeps that selected observer's own judgment and all shared participants.
+4) Department 360 counts actual visits, not raw rows.
+5) Subject coverage requires an actual visit for each configured subject before 'complete'.
+6) Arabic + Islamic Education explicitly configured for Alia, Fatima Al-Hamed, Alaa.
+7) Autism / Learning Difficulties / Inclusion are teacher-only coverage, not subject coverage.
+8) Follow-up center includes unvisited teachers as an action state.
+9) Leadership source options remain available in official reports: official / senior / senior+middle / middle.
+10) Internal tracking report retains teacher names and diagnostic columns.
+
+Static QA:
+- node --check app.js: PASS
+- duplicate HTML IDs: NONE
+- synthetic shared-visit merge: PASS
+- synthetic distinct same-day visit protection by period/grade: PASS
+
+Important: Supabase was NOT mutated. teacher_subjects remains optional until UI/data acceptance is complete.

@@ -1,0 +1,15 @@
+STABLE LEADERSHIP VERIFIED HOTFIX 2 — 2026-10-10
+
+Fixes applied to the uploaded STABLE-LEADERSHIP-VERIFIED version only:
+1. Replaced every invalid fmtDate(...) call with the existing formatDate(...) helper.
+   This fixes the runtime ReferenceError that stopped leadership tracking rendering.
+2. Removed the public.subjects fetch from loadAll because the deployed Supabase endpoint
+   returns 404. The missing optional catalogue can no longer abort/contaminate startup.
+3. Preserved the verified observer linkage: visits.observer_id = profiles.id.
+4. Preserved all-month scope (empty month means no month restriction).
+5. Preserved the central actual-visit grouping and cross-level shared-visit merge.
+6. Preserved monthly/overall leadership-source selectors already present in app.html.
+7. JavaScript syntax verified with: node --check app.js
+
+Important: subject catalogue/database normalization is intentionally deferred to the
+Supabase phase. No database writes or schema changes are included in this hotfix.

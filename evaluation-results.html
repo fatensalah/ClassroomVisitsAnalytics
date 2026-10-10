@@ -639,6 +639,7 @@
     }
 
     @media print{
+      .no-print{display:none!important}
       @page{size:A4;margin:8mm}
       body{background:#fff!important}
       .admin-only,.topbar{display:none!important}
@@ -689,7 +690,9 @@
 
       <div class="actions">
         <button class="btn btn-soft" type="button" onclick="location.href='evaluations.html'">العودة للتقييمات</button>
+        <button id="trainingPlanBtn" class="btn btn-primary" type="button" style="display:none" onclick="openFlexibleTrainingPlan()">إنشاء / تحديث الخطة التدريبية</button>
         <button class="btn btn-gold" type="button" onclick="setMode('report')">معاينة التقرير الرسمي</button>
+        <button class="btn btn-soft" type="button" onclick="showIndividualResponses()">سجل الاستجابات الفردية</button>
         <button id="saveReportBtn" class="btn btn-primary" type="button" onclick="saveReportSettings(true)">حفظ واعتماد التقرير</button>
         <button class="btn btn-soft" type="button" onclick="window.print()">طباعة التقرير</button>
       </div>
@@ -912,6 +915,10 @@
       }
 
       renderReport();
+      const source=new URLSearchParams(location.search).get("source");
+      const meta=parseEventMeta(eventData?.description||"");
+      const planBtn=document.getElementById("trainingPlanBtn");
+      if(planBtn && (source==="training-needs" || /حصر|احتياج|تشخيص|أولويات|مهارات|تقييم قبلي/.test(meta.purpose||""))) planBtn.style.display="inline-flex";
     }catch(error){
       console.error("Load results error:",error);
       renderError("تعذر تحميل نتائج التقييم.");
@@ -1104,10 +1111,71 @@
     return "أولوية للتحسين";
   }
 
+  function parseEventMeta(raw){
+    const text=raw || "";
+    const m=text.match(/^\[\[FORM_PURPOSE:(.*?)\]\]\s*/);
+    const title=(typeof eventData!=="undefined" && eventData?.title) ? eventData.title : "";
+    const inferred=/حصر.*احتياج|احتياج.*تدريب/.test(title)?"حصر احتياجات":/حضور/.test(title)?"سجل حضور":/قياس.*أثر|أثر/.test(title)?"قياس أثر":/استطلاع/.test(title)?"استطلاع رأي":"تقييم فعالية";
+    return {purpose:m?m[1]:inferred,description:m?text.slice(m[0].length):text};
+  }
+
+  function reportTitleForPurpose(purpose){
+    const map={"تقييم فعالية":"تقرير نتائج تقييم فعالية","حصر احتياجات":"تقرير نتائج حصر الاحتياجات","سجل حضور":"سجل الحضور","استطلاع رأي":"تقرير نتائج استطلاع الرأي","قياس أثر":"تقرير نتائج قياس الأثر","ترشيح / تسجيل":"تقرير التسجيل والترشيح"};
+    return map[purpose] || `تقرير نتائج ${purpose}`;
+  }
+
+  function getAnswerFor(submissionId,qid){
+    const a=answers.find(x=>x.submission_id===submissionId && x.question_id===qid);
+    if(!a || a.answer_value===null || a.answer_value===undefined || a.answer_value==='') return '—';
+    if(Array.isArray(a.answer_value)) return a.answer_value.join('، ');
+    if(typeof a.answer_value==='object') return Object.values(a.answer_value).join('، ');
+    return String(a.answer_value);
+  }
+  function respondentName(submission){
+    const nq=questions.find(q=>/الاسم|اسم المستجيب|الاسم الكامل/.test(q.question_text||''));
+    const v=nq?getAnswerFor(submission.id,nq.id):'—';
+    return v==='—'?`مستجيبة ${submissions.indexOf(submission)+1}`:v;
+  }
+  function showIndividualResponses(){
+    if(!eventData) return;
+    const meta=parseEventMeta(eventData.description);
+    const report=document.getElementById('report');
+    report.innerHTML=`
+      <div class="individual-actions no-print" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-start;padding:14px 18px;background:#fff;border:1px solid #d8e2e0;border-radius:14px;margin:0 0 14px">
+        <button class="btn btn-primary" type="button" onclick="window.print()">طباعة / حفظ PDF</button>
+        <button class="btn btn-soft" type="button" onclick="document.body.classList.remove('report-mode'); renderReport(); window.scrollTo({top:0,behavior:'smooth'});">العودة للتحليل</button>
+      </div>
+      <section class="report-head">
+        <img class="school-header" src="school-header.jpg" alt="الترويسة الرسمية للمدرسة">
+        <div class="committee">مركز مصادر التعلم</div>
+        <h2>سجل الاستجابات الفردية</h2>
+        <h3 class="event-title">${escapeHtml(eventData.title)}</h3>
+        <div class="event-meta"><span class="chip">نوع النموذج: ${escapeHtml(meta.purpose)}</span><span class="chip">عدد الاستجابات: ${submissions.length}</span></div>
+      </section>
+      <section class="section individual-register">
+        ${submissions.length?submissions.map((sub,i)=>`<article class="question-card individual-card" style="break-inside:avoid;page-break-inside:avoid;margin-bottom:14px">
+          <h3 style="margin:0 0 10px;color:var(--primary-dark)">${i+1}. ${escapeHtml(respondentName(sub))}</h3>
+          <div style="font-size:.78rem;color:var(--muted);margin-bottom:10px">تاريخ الاستجابة: ${sub.submitted_at?new Date(sub.submitted_at).toLocaleString('ar-BH'):'—'}</div>
+          <table class="results-table"><thead><tr><th style="width:45%">السؤال</th><th>الاستجابة</th></tr></thead><tbody>
+          ${questions.map(q=>`<tr><td>${escapeHtml(q.question_text)}</td><td>${escapeHtml(getAnswerFor(sub.id,q.id))}</td></tr>`).join('')}
+          </tbody></table>
+        </article>`).join(''):'<div class="empty">لا توجد استجابات مسجلة.</div>'}
+      </section>
+      <footer class="report-footer"><div><span>إعداد</span><strong>فاتن صلاح</strong><small>اختصاصية مصادر التعلم</small></div><div><span>المديرة المساعدة</span><strong>خلود الكعبي</strong></div><div><span>مديرة المدرسة</span><strong>أحلام السويدي</strong></div></footer>`;
+    document.body.classList.add('report-mode');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  function openFlexibleTrainingPlan(){
+    const id=new URLSearchParams(location.search).get("id");
+    if(id) location.href=`flexible-training-plan.html?id=${encodeURIComponent(id)}`;
+  }
+
   function renderReport(){
     if(!eventData) return;
 
     const report = document.getElementById("report");
+    const eventMeta = parseEventMeta(eventData.description);
     const quantitative = getQuantitativeQuestions();
     const textQuestions = getTextQuestions();
 
@@ -1129,10 +1197,11 @@
         <img class="school-header" src="school-header.jpg" alt="الترويسة الرسمية للمدرسة">
 
         <div class="committee">لجنة التقييم الذاتي</div>
-        <h2>تقرير نتائج تقييم فعالية</h2>
+        <h2>${escapeHtml(reportTitleForPurpose(eventMeta.purpose))}</h2>
         <h3 class="event-title">${escapeHtml(eventData.title)}</h3>
 
         <div class="event-meta">
+          <span class="chip">نوع النموذج: ${escapeHtml(eventMeta.purpose)}</span>
           ${state.showAudience ? `<span class="chip">الفئة المستهدفة: ${escapeHtml(eventData.target_audience || "غير محددة")}</span>` : ""}
           ${state.showCount ? `<span class="chip">عدد الاستجابات: ${submissions.length}</span>` : ""}
           <span class="chip">${statusArabic(eventData.status)}</span>

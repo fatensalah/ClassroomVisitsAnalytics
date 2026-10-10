@@ -346,8 +346,26 @@
         <div id="createMessage" class="message error hidden"></div>
 
         <div class="field">
-          <label for="eventTitle">اسم الفعالية *</label>
+          <label for="eventTitle">اسم النموذج / الفعالية *</label>
           <input id="eventTitle" type="text" maxlength="180" required>
+        </div>
+
+        <div class="field">
+          <label for="formPurpose">الغرض من الرابط / نوع النموذج *</label>
+          <select id="formPurpose" required>
+            <option value="">اختاري الغرض...</option>
+            <option>تقييم فعالية</option>
+            <option>حصر احتياجات</option>
+            <option>سجل حضور</option>
+            <option>استطلاع رأي</option>
+            <option>قياس أثر</option>
+            <option>ترشيح / تسجيل</option>
+            <option>أخرى</option>
+          </select>
+        </div>
+        <div class="field hidden" id="otherPurposeWrap">
+          <label for="otherPurpose">اكتبي الغرض من الرابط *</label>
+          <input id="otherPurpose" type="text" maxlength="120" placeholder="مثال: تسجيل مشاركة في مبادرة">
         </div>
 
         <div class="field">
@@ -376,6 +394,32 @@
     </div>
   </div>
 
+  <div id="editModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>تعديل النموذج المنشور</h3>
+        <button id="closeEditModalBtn" class="close-btn" type="button">×</button>
+      </div>
+      <form id="editForm" class="modal-body">
+        <div id="editMessage" class="message error hidden"></div>
+        <input id="editEventId" type="hidden">
+        <div class="field"><label for="editEventTitle">اسم النموذج / الفعالية *</label><input id="editEventTitle" type="text" maxlength="180" required></div>
+        <div class="field"><label for="editFormPurpose">الغرض من الرابط / نوع النموذج *</label>
+          <select id="editFormPurpose" required>
+            <option value="">اختاري الغرض...</option><option>تقييم فعالية</option><option>حصر احتياجات</option><option>سجل حضور</option><option>استطلاع رأي</option><option>قياس أثر</option><option>ترشيح / تسجيل</option><option>أخرى</option>
+          </select>
+        </div>
+        <div class="field hidden" id="editOtherPurposeWrap"><label for="editOtherPurpose">اكتبي الغرض من الرابط *</label><input id="editOtherPurpose" type="text" maxlength="120"></div>
+        <div class="field"><label for="editTargetAudience">الفئة المستهدفة *</label>
+          <select id="editTargetAudience" required><option value="">اختاري الفئة...</option><option>الطلبة</option><option>أولياء الأمور</option><option>المعلمات</option><option>الهيئة الإدارية</option><option>الهيئة التعليمية</option><option>أخرى</option></select>
+        </div>
+        <div class="field"><label for="editEventDescription">وصف مختصر</label><textarea id="editEventDescription" maxlength="800"></textarea></div>
+        <div class="modal-actions"><button id="cancelEditBtn" class="btn btn-soft" type="button">إلغاء</button><button id="saveEditBtn" class="btn btn-primary" type="submit">حفظ التعديلات</button></div>
+        <p style="font-size:.72rem;color:#64748b;margin:4px 0 0">لن يتغير رابط النموذج ولن تُحذف أي استجابة أو سؤال. التعديل يغيّر بيانات النموذج فقط.</p>
+      </form>
+    </div>
+  </div>
+
 <script>
   const sb = supabase.createClient(APP_CONFIG.supabaseUrl, APP_CONFIG.supabaseKey);
 
@@ -399,6 +443,16 @@
     document.getElementById("closeModalBtn").addEventListener("click",closeCreateModal);
     document.getElementById("cancelCreateBtn").addEventListener("click",closeCreateModal);
     document.getElementById("createForm").addEventListener("submit",createEvaluation);
+    document.getElementById("editForm").addEventListener("submit",saveEvaluationEdits);
+    document.getElementById("closeEditModalBtn").addEventListener("click",closeEditModal);
+    document.getElementById("cancelEditBtn").addEventListener("click",closeEditModal);
+    document.getElementById("editFormPurpose").addEventListener("change",toggleEditOtherPurpose);
+    document.getElementById("editModal").addEventListener("click",e=>{ if(e.target.id === "editModal") closeEditModal(); });
+    document.getElementById("formPurpose").addEventListener("change",()=>{
+      const isOther=document.getElementById("formPurpose").value === "أخرى";
+      document.getElementById("otherPurposeWrap").classList.toggle("hidden",!isOther);
+      document.getElementById("otherPurpose").required=isOther;
+    });
 
     document.getElementById("createModal").addEventListener("click",e=>{
       if(e.target.id === "createModal") closeCreateModal();
@@ -467,10 +521,12 @@
         ? `evaluation-form.html?t=${encodeURIComponent(event.public_token)}`
         : "";
 
+      const meta=parseEventMeta(event.description,event.title);
       return `
         <article class="event-card">
           <h3>${escapeHtml(event.title)}</h3>
-          <p class="event-desc">${event.description ? escapeHtml(event.description) : "لا يوجد وصف مضاف."}</p>
+          <p class="event-desc">${meta.description ? escapeHtml(meta.description) : "لا يوجد وصف مضاف."}</p>
+          <div class="badges"><span class="badge">${escapeHtml(meta.purpose || "تقييم فعالية")}</span></div>
 
           <div class="badges">
             <span class="badge">${escapeHtml(event.target_audience || "غير محددة")}</span>
@@ -479,6 +535,7 @@
           </div>
 
           <div class="event-actions">
+            <button class="btn btn-soft" type="button" onclick="openEditModal('${event.id}')">تعديل النموذج</button>
             <button class="btn btn-soft" type="button"
               onclick="location.href='evaluation-create.html?id=${encodeURIComponent(event.id)}'">
               إعداد الأسئلة
@@ -520,6 +577,16 @@
     }).join("");
   }
 
+  function buildEventDescription(purpose,description){
+    return `[[FORM_PURPOSE:${purpose || "تقييم فعالية"}]]\n${description || ""}`;
+  }
+  function parseEventMeta(raw,title=""){
+    const text=raw || "";
+    const m=text.match(/^\[\[FORM_PURPOSE:(.*?)\]\]\s*/);
+    const inferred=/حصر.*احتياج|احتياج.*تدريب/.test(title)?"حصر احتياجات":/حضور/.test(title)?"سجل حضور":/قياس.*أثر|أثر/.test(title)?"قياس أثر":/استطلاع/.test(title)?"استطلاع رأي":"تقييم فعالية";
+    return {purpose:m?m[1]:inferred,description:m?text.slice(m[0].length):text};
+  }
+
   function openCreateModal(){
     document.getElementById("createMessage").classList.add("hidden");
     document.getElementById("createForm").reset();
@@ -531,11 +598,68 @@
     document.getElementById("createModal").classList.add("hidden");
   }
 
+  function toggleEditOtherPurpose(){
+    const sel=document.getElementById("editFormPurpose");
+    const isOther=sel.value === "أخرى";
+    document.getElementById("editOtherPurposeWrap").classList.toggle("hidden",!isOther);
+    document.getElementById("editOtherPurpose").required=isOther;
+  }
+
+  function openEditModal(eventId){
+    const event=events.find(e=>String(e.id)===String(eventId));
+    if(!event) return alert("تعذر العثور على النموذج.");
+    const meta=parseEventMeta(event.description,event.title);
+    const standard=["تقييم فعالية","حصر احتياجات","سجل حضور","استطلاع رأي","قياس أثر","ترشيح / تسجيل"];
+    document.getElementById("editEventId").value=event.id;
+    document.getElementById("editEventTitle").value=event.title || "";
+    document.getElementById("editTargetAudience").value=event.target_audience || "";
+    document.getElementById("editEventDescription").value=meta.description || "";
+    if(standard.includes(meta.purpose)){
+      document.getElementById("editFormPurpose").value=meta.purpose;
+      document.getElementById("editOtherPurpose").value="";
+    }else{
+      document.getElementById("editFormPurpose").value="أخرى";
+      document.getElementById("editOtherPurpose").value=meta.purpose || "";
+    }
+    toggleEditOtherPurpose();
+    document.getElementById("editMessage").classList.add("hidden");
+    document.getElementById("editModal").classList.remove("hidden");
+  }
+
+  function closeEditModal(){ document.getElementById("editModal").classList.add("hidden"); }
+
+  async function saveEvaluationEdits(e){
+    e.preventDefault();
+    const id=document.getElementById("editEventId").value;
+    const title=document.getElementById("editEventTitle").value.trim();
+    const audience=document.getElementById("editTargetAudience").value;
+    const sel=document.getElementById("editFormPurpose").value;
+    const other=document.getElementById("editOtherPurpose").value.trim();
+    const purpose=sel === "أخرى" ? other : sel;
+    const description=document.getElementById("editEventDescription").value.trim();
+    const msg=document.getElementById("editMessage");
+    const btn=document.getElementById("saveEditBtn");
+    msg.classList.add("hidden");
+    if(!id || !title || !audience || !purpose){ msg.textContent="يرجى استكمال اسم النموذج والغرض والفئة المستهدفة."; msg.classList.remove("hidden"); return; }
+    btn.disabled=true; btn.textContent="جاري الحفظ...";
+    try{
+      const {data,error}=await sb.from("evaluation_events").update({title,target_audience:audience,description:buildEventDescription(purpose,description)}).eq("id",id).select("*").single();
+      if(error) throw error;
+      const i=events.findIndex(x=>String(x.id)===String(id)); if(i>=0) events[i]=data;
+      closeEditModal(); renderEvents();
+      alert("تم حفظ التعديل مع الاحتفاظ بنفس الرابط والأسئلة والاستجابات.");
+    }catch(err){ console.error("Edit evaluation error:",err); msg.textContent="تعذر حفظ التعديلات. لم يتم تغيير النموذج."; msg.classList.remove("hidden"); }
+    finally{ btn.disabled=false; btn.textContent="حفظ التعديلات"; }
+  }
+
   async function createEvaluation(e){
     e.preventDefault();
 
     const title = document.getElementById("eventTitle").value.trim();
     const targetAudience = document.getElementById("targetAudience").value;
+    const purposeSelect = document.getElementById("formPurpose").value;
+    const otherPurpose = document.getElementById("otherPurpose").value.trim();
+    const purpose = purposeSelect === "أخرى" ? otherPurpose : purposeSelect;
     const description = document.getElementById("eventDescription").value.trim();
     const message = document.getElementById("createMessage");
     const btn = document.getElementById("saveEventBtn");
@@ -543,8 +667,8 @@
     message.classList.add("hidden");
     message.textContent = "";
 
-    if(!title || !targetAudience){
-      message.textContent = "يرجى إدخال اسم الفعالية واختيار الفئة المستهدفة.";
+    if(!title || !targetAudience || !purpose){
+      message.textContent = "يرجى إدخال اسم النموذج وتحديد الغرض والفئة المستهدفة.";
       message.classList.remove("hidden");
       return;
     }
@@ -558,7 +682,7 @@
         .insert({
           title,
           target_audience:targetAudience,
-          description:description || null,
+          description:buildEventDescription(purpose,description),
           status:"draft",
           created_by:currentUser.id
         })

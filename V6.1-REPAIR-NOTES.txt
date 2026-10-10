@@ -1,0 +1,10 @@
+V6.1 repair
+- Restored report leadership-source selector: official / senior only / senior+middle raw / middle only.
+- Restored V4 professional report engine including teacher names in internal tracking report.
+- Department membership no longer relies only on teachers.department_id; it also derives membership from actual visit records.
+- Leadership tracking now refreshes immediately and uses the selected leader/month/department.
+- Follow-up center department linkage repaired.
+- Department 360 teacher counts and coverage repaired.
+- Subject coverage department/subject linkage repaired and selectors refresh reactively.
+- Shared-visit official key includes teacher/date/period/grade/subject/lesson title; senior record is preferred in official mode.
+- No Supabase mutation is performed by this package.
