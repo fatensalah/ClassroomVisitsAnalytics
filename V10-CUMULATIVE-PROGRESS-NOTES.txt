@@ -1,0 +1,30 @@
+V10 — Cumulative Performance Progress — 2026-10-11
+
+1) Actual-visit rule fixed centrally:
+   - Same teacher + same calendar date = ONE actual visit for analytics.
+   - Duplicate same-day records are treated as shared/data-entry duplicates.
+   - Upper leadership assessment is the official assessment when present.
+   - If duplicate rows exist at the same leadership level, the most complete record is selected.
+
+2) Added "تطور الأداء التراكمي" screen:
+   - School and department level.
+   - Visit 1 / Visit 2 / Visit 3 ... based on each teacher's chronological journey.
+   - Overall-rating distribution by visit order with counts and percentages.
+   - Tracks what happened to teachers rated "يفي بالتوقعات جزئيًا" in the next visit.
+   - Criteria M1–M18 remeasurement: improved / still partial / waiting for remeasurement.
+
+3) Teacher 360 upgraded:
+   - Cumulative journey (month is an end-date filter, never a reset).
+   - Visit number, date, overall judgment, partial criteria.
+   - Overall judgment transitions.
+   - Criterion-level remeasurement status.
+
+4) Department 360 upgraded:
+   - Existing analysis preserved.
+   - Cumulative department progress appended.
+
+5) Data Quality:
+   - Same-teacher same-date duplicate records are surfaced as audit warnings,
+     while still counted analytically as one actual visit.
+
+No Supabase schema migration was added in this patch.

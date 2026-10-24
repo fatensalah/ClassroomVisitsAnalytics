@@ -1,0 +1,8 @@
+V10.2 - Compact cumulative performance dashboard
+- Keeps teacher+date as one actual visit.
+- General rating table now reveals teacher names only when a number is clicked.
+- Partial-rating transitions reveal names on demand.
+- M1-M18 redesigned as transition tabs (1->2, 2->3, ...), not one very long repeated table.
+- Adds leadership summary: persistent needs, proven improvements, and pending remeasurement.
+- Adds automatic leadership reading and limited-sample warning.
+- No Supabase schema changes.

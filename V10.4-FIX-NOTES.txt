@@ -1,0 +1,7 @@
+V10.4 — 2026-10-12
+1) Strengthened actual-visit deduplication: one teacher + one normalized calendar date = one actual visit.
+2) Teacher identity uses canonical normalized teacher name with ID fallback, preventing duplicate teacher records from creating false extra visits.
+3) Date key normalizes timestamps, / vs -, and Arabic/Persian digits.
+4) Upper leadership remains authoritative for same-day merged records.
+5) Added a separate "التطور الأكاديمي حسب القسم" section below cumulative analysis.
+No Supabase schema changes.

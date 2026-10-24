@@ -352,6 +352,9 @@ async function loadCurrentProfile() {
 ========================================================= */
 
 async function loadAll() {
+  // V10.8: restore the original shared platform visibility for leadership/coordinators.
+  // Role-specific admin controls remain protected by .admin-only; analytical data is loaded for signed-in users.
+
   const req =
     await Promise.all([
       sb
@@ -469,10 +472,20 @@ async function loadAll() {
         item.data || []
     );
 
-  // The deployed database currently has no public.subjects endpoint (verified by 404).
-  // Keep the platform operational and use the verified local teacher-subject map
-  // until the Supabase subject catalogue is added in the database phase.
-  subjects = [];
+  // V10.9: load the live subject catalogue from Supabase first.
+  // This is the source of truth for department/subject relationships.
+  // Keep the verified historical map only as a read-only fallback if the table cannot be read.
+  try {
+    const subjectReq = await sb
+      .from("subjects")
+      .select("*")
+      .order("name");
+    subjects = subjectReq.error
+      ? buildVerifiedSubjectRows(visits)
+      : (subjectReq.data || []);
+  } catch (_) {
+    subjects = buildVerifiedSubjectRows(visits);
+  }
 
   // V6: teacher_subjects is an optional extension table. The platform remains
   // operational before the migration is applied and uses the verified school map below.
@@ -640,6 +653,16 @@ function populateMonthSelectors() {
     );
 }
 
+function uniqueSubjectsByName(rows) {
+  const seen = new Set();
+  return (rows || []).filter(subject => {
+    const key = v6Norm(subject?.name || "");
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function updateSubjectSelect(
   selected = ""
 ) {
@@ -648,19 +671,21 @@ function updateSubjectSelect(
       ?.value ||
     "";
 
-  const rows =
-    activeRows(
-      subjects
-    )
-      .filter(
-        subject =>
-          String(
-            subject.department_id
-          ) ===
-          String(
-            departmentId
-          )
-      );
+  const selectedDepartment = departments.find(
+    department => String(department.id) === String(departmentId)
+  );
+
+  // Special-education departments teach across the school curriculum, so all
+  // active subjects must be available. Other departments only see their own
+  // configured subjects from public.subjects.
+  const allActiveSubjects = activeRows(subjects);
+  const rows = uniqueSubjectsByName(
+    v6IsSpecialDeptName(selectedDepartment?.name || "")
+      ? allActiveSubjects
+      : allActiveSubjects.filter(
+          subject => String(subject.department_id) === String(departmentId)
+        )
+  );
 
   setOptions(
     "subjectSelect",
@@ -912,9 +937,7 @@ function fillUI() {
 
   setOptions(
     "histSubject",
-    activeRows(
-      subjects
-    ),
+    uniqueSubjectsByName(activeRows(subjects)),
     "كل المواد",
     "name"
   );
@@ -936,6 +959,15 @@ function fillUI() {
     "اختاري القسم",
     "name"
   );
+
+  setOptions(
+    "newTeacherDept",
+    activeRows(departments),
+    "اختاري القسم",
+    "name"
+  );
+
+  renderTeacherDepartmentManager();
 
   populateMonthSelectors();
 
@@ -5779,13 +5811,9 @@ function filteredHistory() {
           .value
       ) &&
       (
-        !$("histSubject")
-          ?.value ||
-        String(
-          visit.subject_id
-        ) ===
-        $("histSubject")
-          .value
+        !$("histSubject")?.value ||
+        v6Norm(v6SubjectNameById(visit.subject_id)) ===
+          v6Norm(v6SubjectNameById($("histSubject").value))
       ) &&
       (
         !$("histRating")
@@ -5879,11 +5907,7 @@ function renderHistory() {
 
                       <td>
                         ${esc(
-                          map.subjects[
-                            String(
-                              visit.subject_id
-                            )
-                          ]?.name ||
+                          v6VisitSubject(visit) ||
                           "—"
                         )}
                       </td>
@@ -8127,15 +8151,13 @@ async function saveVisit(
     await loadAll();
 
     /*
-      إنشاء متابعة تلقائية لأي دعم سابق
-      لنفس المعلمة.
+      إنشاء المتابعة التلقائية يحتاج طبقة التحليل الكاملة؛
+      لذلك ينفذ من حساب مسؤولة النظام فقط.
     */
-
-    await createAutomaticFollowupsForVisit(
-      visitId
-    );
-
-    await loadAll();
+    if (currentProfile?.role === "admin") {
+      await createAutomaticFollowupsForVisit(visitId);
+      await loadAll();
+    }
 
     fillUI();
 
@@ -8155,9 +8177,7 @@ async function saveVisit(
 
     clearForm();
 
-    showView(
-      "history"
-    );
+    showView("history");
   }
   catch (
     error
@@ -10104,6 +10124,7 @@ function renderUsers() {
                 <option>مديرة المدرسة</option>
                 <option>مديرة مساعدة</option>
                 <option>منسقة قسم</option>
+                <option>معلم أول</option>
                 <option>مسؤولة النظام</option>
               </select>
             </label>
@@ -10200,7 +10221,7 @@ function renderUsers() {
                 <th>المستوى القيادي</th>
                 <th>القسم</th>
                 <th>الحالة</th>
-                <th>إجراء الدخول</th>
+                <th>إدارة المستخدم</th>
               </tr>
             </thead>
 
@@ -10240,14 +10261,26 @@ function renderUsers() {
                           }
                         </td>
                         <td>
-                          <button
-                            type="button"
-                            class="btn btn-soft platform-password-btn"
-                            data-user-id="${esc(profile.id)}"
-                            data-user-name="${esc(profile.full_name || profile.email || "المستخدم")}" 
-                          >
-                            تعيين كلمة مرور
-                          </button>
+                          <div class="user-action-group">
+                            <button
+                              type="button"
+                              class="btn btn-soft platform-edit-user-btn"
+                              data-user-id="${esc(profile.id)}"
+                            >تعديل</button>
+                            <button
+                              type="button"
+                              class="btn btn-soft platform-password-btn"
+                              data-user-id="${esc(profile.id)}"
+                              data-user-name="${esc(profile.full_name || profile.email || "المستخدم")}"
+                            >تعيين كلمة مرور</button>
+                            ${profile.role === "admin" ? "" : `
+                            <button
+                              type="button"
+                              class="btn btn-soft platform-toggle-user-btn"
+                              data-user-id="${esc(profile.id)}"
+                              data-user-active="${profile.active === false ? "false" : "true"}"
+                            >${profile.active === false ? "تفعيل" : "تعطيل"}</button>`}
+                          </div>
                         </td>
                       </tr>
                     `
@@ -10465,6 +10498,84 @@ function renderUsers() {
     );
 
   document
+    .querySelectorAll(".platform-edit-user-btn")
+    .forEach(button => button.addEventListener("click", async () => {
+      const profile = profiles.find(item => String(item.id) === String(button.dataset.userId));
+      if (!profile) return;
+
+      const fullName = window.prompt("الاسم:", profile.full_name || "");
+      if (fullName === null) return;
+      const jobTitle = window.prompt(
+        "الصفة الوظيفية (مديرة المدرسة / مديرة مساعدة / منسقة قسم / معلم أول / مسؤولة النظام):",
+        profile.job_title || ""
+      );
+      if (jobTitle === null) return;
+      const level = window.prompt(
+        "المستوى القيادي (قيادة عليا / قيادة وسطى / لا ينطبق):",
+        leadershipLevel(profile)
+      );
+      if (level === null) return;
+      if (!["قيادة عليا", "قيادة وسطى", "لا ينطبق"].includes(level.trim())) {
+        alert("المستوى القيادي غير صحيح.");
+        return;
+      }
+
+      let departmentId = profile.department_id || null;
+      if (jobTitle.trim() === "منسقة قسم") {
+        const currentDepartment = departments.find(d => String(d.id) === String(profile.department_id));
+        const deptName = window.prompt("اسم القسم:", currentDepartment?.name || "");
+        if (deptName === null) return;
+        const department = departments.find(d => (d.name || "").trim() === deptName.trim());
+        if (!department) {
+          alert("لم يتم العثور على القسم. اكتبي اسم القسم كما هو مسجل في المنصة.");
+          return;
+        }
+        departmentId = department.id;
+      } else {
+        departmentId = null;
+      }
+
+      try {
+        button.disabled = true;
+        const { error } = await sb.from("profiles").update({
+          full_name: fullName.trim(),
+          job_title: jobTitle.trim(),
+          leadership_level: level.trim() === "لا ينطبق" ? null : level.trim(),
+          department_id: departmentId
+        }).eq("id", profile.id);
+        if (error) throw error;
+        await loadAll();
+        fillUI();
+        renderUsers();
+        alert("تم تحديث بيانات المستخدم والمستوى القيادي بنجاح.");
+      } catch (error) {
+        alert(error.message || "تعذر تحديث بيانات المستخدم.");
+      } finally {
+        button.disabled = false;
+      }
+    }));
+
+  document
+    .querySelectorAll(".platform-toggle-user-btn")
+    .forEach(button => button.addEventListener("click", async () => {
+      const active = button.dataset.userActive === "true";
+      const verb = active ? "تعطيل" : "تفعيل";
+      if (!window.confirm(`هل تريدين ${verb} هذا المستخدم؟`)) return;
+      try {
+        button.disabled = true;
+        const { error } = await sb.from("profiles").update({ active: !active }).eq("id", button.dataset.userId);
+        if (error) throw error;
+        await loadAll();
+        fillUI();
+        renderUsers();
+      } catch (error) {
+        alert(error.message || `تعذر ${verb} المستخدم.`);
+      } finally {
+        button.disabled = false;
+      }
+    }));
+
+  document
     .querySelectorAll(
       ".platform-password-btn"
     )
@@ -10569,6 +10680,81 @@ function renderUsers() {
    MASTER DATA
 ========================================================= */
 
+function renderTeacherDepartmentManager() {
+  const out = $("teacherDepartmentManager");
+  if (!out) return;
+
+  const deptOptions = activeRows(departments)
+    .map(d => `<option value="${d.id}">${esc(d.name)}</option>`)
+    .join("");
+
+  const rows = [...teachers]
+    .sort((a,b) => String(a.full_name || "").localeCompare(String(b.full_name || ""), "ar"))
+    .map(t => `
+      <tr>
+        <td>${esc(t.full_name || "—")}</td>
+        <td>
+          <select class="teacher-dept-edit" data-teacher-id="${t.id}" ${t.active === false ? "disabled" : ""}>
+            <option value="">غير مرتبط</option>
+            ${deptOptions.replace(`value="${t.department_id}"`, `value="${t.department_id}" selected`)}
+          </select>
+        </td>
+        <td>${t.active === false ? "غير نشطة" : "نشطة"}</td>
+        <td>
+          <button class="btn teacher-active-toggle" type="button" data-teacher-id="${t.id}" data-active="${t.active !== false}">
+            ${t.active === false ? "إعادة تفعيل" : "تعطيل"}
+          </button>
+        </td>
+      </tr>`).join("");
+
+  out.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>اسم المعلمة</th><th>القسم</th><th>الحالة</th><th>إجراء</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4">لا توجد معلمات.</td></tr>'}</tbody>
+      </table>
+    </div>
+    <div id="teacherDepartmentMsg" class="message"></div>`;
+
+  out.querySelectorAll(".teacher-dept-edit").forEach(select => {
+    select.addEventListener("change", async () => {
+      const teacherId = Number(select.dataset.teacherId);
+      const departmentId = select.value ? Number(select.value) : null;
+      const msg = $("teacherDepartmentMsg");
+      select.disabled = true;
+      const { error } = await sb.from("teachers").update({ department_id: departmentId }).eq("id", teacherId);
+      if (error) {
+        if (msg) msg.textContent = error.message;
+      } else {
+        if (msg) msg.textContent = "تم تحديث قسم المعلمة.";
+        await loadAll();
+        fillUI();
+        renderAll();
+      }
+      select.disabled = false;
+    });
+  });
+
+  out.querySelectorAll(".teacher-active-toggle").forEach(button => {
+    button.addEventListener("click", async () => {
+      const teacherId = Number(button.dataset.teacherId);
+      const isActive = button.dataset.active === "true";
+      const msg = $("teacherDepartmentMsg");
+      button.disabled = true;
+      const { error } = await sb.from("teachers").update({ active: !isActive }).eq("id", teacherId);
+      if (error) {
+        if (msg) msg.textContent = error.message;
+        button.disabled = false;
+        return;
+      }
+      await loadAll();
+      fillUI();
+      renderAll();
+      if ($("teacherDepartmentMsg")) $("teacherDepartmentMsg").textContent = isActive ? "تم تعطيل المعلمة." : "تمت إعادة تفعيل المعلمة.";
+    });
+  });
+}
+
 function renderMasterSummary() {
   if (
     $("masterSummary")
@@ -10666,6 +10852,7 @@ const VIEW_MAP = {
     "subjectCoverageView",
 
   teacher360: "teacher360View",
+  performanceProgress: "performanceProgressView",
   criteriaMatrix: "criteriaMatrixView",
   nextVisits: "nextVisitsView",
   decisionCenter: "decisionCenterView",
@@ -10713,6 +10900,7 @@ const VIEW_TITLES = {
   subjectCoverage:
     "تحليل المواد والتغطية",
   teacher360: "بطاقة المعلمة 360°",
+  performanceProgress: "تطور الأداء التراكمي",
   criteriaMatrix: "مصفوفة م1–م18",
   nextVisits: "خطة الزيارات القادمة",
   decisionCenter: "مركز قرارات القيادة",
@@ -10827,6 +11015,7 @@ function showView(
 
   if (name === "subjectCoverage") { renderSubjectCoverage(); }
   if (name === "teacher360") { renderTeacher360(); }
+  if (name === "performanceProgress") { renderPerformanceProgress(); }
   if (name === "criteriaMatrix") { renderCriteriaMatrix(); }
   if (name === "nextVisits") { renderNextVisits(); }
   if (name === "decisionCenter") { renderDecisionCenter(); }
@@ -10905,22 +11094,19 @@ function bindNavigation() {
 ========================================================= */
 
 function applyPermissionsUI() {
-  const admin =
-    currentProfile?.role ===
-    "admin";
+  const admin = currentProfile?.role === "admin";
 
-  document
-    .querySelectorAll(
-      ".admin-only,[data-admin-only]"
-    )
-    .forEach(
-      element =>
-        element.classList.toggle(
-          "hidden",
-          !admin
-        )
-    );
+  document.querySelectorAll(".admin-only,[data-admin-only]").forEach(
+    element => element.classList.toggle("hidden", !admin)
+  );
+
+  // V10.8: leadership and coordinators can again see the normal platform modules.
+  // Only controls explicitly marked admin-only stay restricted to the system administrator.
+  document.querySelectorAll("nav.nav button:not(.admin-only):not([data-admin-only])").forEach(button => {
+    button.classList.remove("hidden");
+  });
 }
+
 
 /* =========================================================
    CURRENT USER
@@ -11195,8 +11381,10 @@ function bindStaticEvents() {
           $("newTeacherName")
             ?.value
             .trim();
+        const departmentId = num($("newTeacherDept")?.value);
 
-        if (!name) {
+        if (!name || !departmentId) {
+          $("teacherMsg").textContent = "يرجى إدخال اسم المعلمة واختيار القسم.";
           return;
         }
 
@@ -11211,6 +11399,9 @@ function bindStaticEvents() {
               {
                 full_name:
                   name,
+
+                department_id:
+                  departmentId,
 
                 active:
                   true
@@ -11228,6 +11419,7 @@ function bindStaticEvents() {
 
         $("newTeacherName").value =
           "";
+        if ($("newTeacherDept")) $("newTeacherDept").value = "";
 
         await loadAll();
 
@@ -11336,8 +11528,11 @@ function bindStaticEvents() {
         if (
           error
         ) {
-          $("subjectMsg").textContent =
-            error.message;
+          const duplicate = String(error.code || "") === "23505" ||
+            /duplicate key|unique constraint/i.test(String(error.message || ""));
+          $("subjectMsg").textContent = duplicate
+            ? "هذه المادة موجودة بالفعل في هذا القسم، ولا تحتاج إلى إضافتها مرة أخرى."
+            : error.message;
 
           return;
         }
@@ -11550,7 +11745,7 @@ function v6Norm(x){
 }
 function v6IsSpecialDeptName(name){
   const n=v6Norm(name);
-  return n.includes("التوحد") || n.includes("صعوبات التعلم") || n.includes("الدمج");
+  return n.includes("التوحد") || n.includes("صعوبات التعلم") || n.includes("الدمج") || n.includes("النطق");
 }
 function v6TeacherCoverageMode(t){
   return v6IsSpecialDeptName(v5DeptName(t.department_id)) ? "teacher_only" : "subject_based";
@@ -11623,6 +11818,18 @@ const V14_VERIFIED_SUBJECT_ID_MAP = Object.freeze({
   "28":"الرياضيات",
   "32":"الرياضيات"
 });
+function buildVerifiedSubjectRows(sourceVisits = []){
+  return Object.entries(V14_VERIFIED_SUBJECT_ID_MAP).map(([id,name])=>{
+    const seen = sourceVisits.find(v=>String(v.subject_id)===String(id) && v.department_id);
+    return {
+      id:String(id),
+      name:v6CanonicalSubjectName(name),
+      department_id:seen?.department_id || null,
+      active:true
+    };
+  });
+}
+
 function v6SubjectNameById(id){
   if(id===null || id===undefined || String(id).trim()==="") return "غير محدد";
   const fromLoaded = subjects.find(s=>String(s.id)===String(id));
@@ -12174,9 +12381,7 @@ async function boot() {
           );
     }
 
-    showView(
-      "dashboard"
-    );
+    showView("dashboard");
 
     offerVisitDraftRestore();
   }
@@ -12951,10 +13156,27 @@ function atharEvidence(t,historyRows,periodRows=[]){
     if(a.length>=3 && a.slice(-3).every(x=>x.r>=3)) sustainedStrong.push({c,count:3});
   });
   const evaluators=new Set();av.forEach(v=>(v._members||[v]).forEach(m=>evaluators.add(String(m.observer_id))));
+  const overall = av.map(v=>num(v.overall_rating)).filter(Boolean);
+  const lastOverall = overall[overall.length-1] || 0;
+  const prevOverall = overall.length>=2 ? overall[overall.length-2] : 0;
+  const last2Overall = overall.slice(-2);
+  const last3Overall = overall.slice(-3);
+  const overallImproved = overall.length>=2 && lastOverall>prevOverall;
+  const overallNotDeclined = overall.length>=2 && lastOverall>=prevOverall;
+
   let level={key:"start",label:"✨ بداية رحلة أثر",reason:av.length===1?"هذه أول زيارة فعلية مسجلة حتى الفترة المختارة؛ نحتاج رصدًا لاحقًا قبل استنتاج النمو.":"توجد بيانات رصد سابقة، لكن الدليل التراكمي لا يكفي بعد لمنح مستوى تكريم مهني."};
-  if(improved.length>=2) level={key:"growing",label:"🌱 نامية بأثر",reason:`تحسن مثبت في ${improved.length} معايير عبر زيارات فعلية مستقلة.`};
-  if(repeatedStrong.length>=2 && av.length>=2) level={key:"maker",label:"💎 صانعة أثر",reason:`قوة واضحة ومتكررة في ${repeatedStrong.length} معايير عبر زيارتين مستقلتين أو أكثر.`};
-  if(av.length>=3 && sustainedStrong.length>=2) level={key:"rolemodel",label:"🏆 قدوة في الممارسة",reason:`قوة مستدامة في ${sustainedStrong.length} معايير خلال آخر ثلاث زيارات مستقلة على الأقل${evaluators.size>1?"، مع تنوع المقيمين":""}.`};
+
+  // النمو لا يُمنح لمجرد تحسن معيارين إذا ظل الحكم العام ضعيفًا.
+  if(av.length>=2 && lastOverall>=2 && (overallImproved || (overallNotDeclined && improved.length>=2)))
+    level={key:"growing",label:"🌱 نامية بأثر",reason:`تحسن مهني مثبت مع حكم عام أخير «${ratingLabel(lastOverall)}»${overallImproved?" وتحسن في الحكم العام":""}${improved.length?`، وتحسن في ${improved.length} معايير مقاسة` : ""}.`};
+
+  // صانعة أثر تتطلب حكمًا عامًا قويًا في زيارتين متتاليتين مع قوة معيارية متكررة.
+  if(av.length>=2 && last2Overall.length===2 && last2Overall.every(r=>r>=3) && repeatedStrong.length>=2)
+    level={key:"maker",label:"💎 صانعة أثر",reason:`حكم عام قوي في آخر زيارتين مع قوة واضحة ومتكررة في ${repeatedStrong.length} معايير.`};
+
+  // قدوة في الممارسة تتطلب استدامة الحكم القوي عبر ثلاث زيارات فعلية مستقلة.
+  if(av.length>=3 && last3Overall.length===3 && last3Overall.every(r=>r>=3) && sustainedStrong.length>=2)
+    level={key:"rolemodel",label:"🏆 قدوة في الممارسة",reason:`حكم عام قوي ومستدام خلال آخر ثلاث زيارات مع قوة مستدامة في ${sustainedStrong.length} معايير${evaluators.size>1?"، ومع تنوع المقيمين":""}.`};
   const acts=v15SupportActionsForTeacher(t.id).slice().sort((a,b)=>String(a.support_date||"").localeCompare(String(b.support_date||"")));
   const lastAct=acts[acts.length-1]||null;let supportImpact=null;
   if(lastAct?.support_date){const before=av.filter(v=>String(v.visit_date)<String(lastAct.support_date)),after=av.filter(v=>String(v.visit_date)>=String(lastAct.support_date));if(before.length&&after.length){const b=atharCriterionMap(before[before.length-1]),a=atharCriterionMap(after[after.length-1]),g=[];Object.keys(a).forEach(c=>{if(b[c]!=null&&a[c]>b[c])g.push(c)});if(g.length)supportImpact={criteria:g,action:lastAct,after:after.length};}}
@@ -13002,3 +13224,279 @@ function atharPrintCard(id){
 }
 function renderAthar(){atharFillFilters();document.querySelectorAll("[data-athar-tab]").forEach(b=>b.classList.toggle("active",b.dataset.atharTab===ATHAR_TAB));const out=$("atharOutput");if(!out)return;const scope=atharScope();out.innerHTML=ATHAR_TAB==="month"?atharMonth(scope):ATHAR_TAB==="journey"?atharJourney(scope):ATHAR_TAB==="cards"?atharCards(scope):atharDashboard(scope);}
 
+
+
+/* =========================================================
+   V10 — CUMULATIVE PERFORMANCE PROGRESS + STRICT SAME-DAY DEDUP
+   2026-10-11
+   Business rule: one teacher can have only ONE actual visit per calendar date.
+   Duplicate rows on the same date are data-entry/shared-leadership records, not
+   additional visits. Official analysis prefers upper leadership when present.
+========================================================= */
+function v10Date(v){
+  const raw=String(v?.visit_date||"").trim();
+  if(!raw)return "";
+  // Normalize every stored representation to one calendar key YYYY-MM-DD.
+  // This prevents the same day being counted twice when one row uses / and another -,
+  // or when a timestamp/timezone suffix is present.
+  const latin=raw.replace(/[٠-٩]/g,d=>String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).replace(/[۰-۹]/g,d=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)));
+  const m=latin.match(/(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
+  if(m)return `${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`;
+  const d=new Date(latin);
+  if(!Number.isNaN(d.getTime()))return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  return latin.slice(0,10).replace(/[\/.]/g,"-");
+}
+function v10NormName(s){return String(s||"").trim().replace(/[أإآ]/g,"ا").replace(/ى/g,"ي").replace(/ة/g,"ه").replace(/\s+/g," ").toLowerCase();}
+function v10TeacherIdentity(v){
+  const t=teachers.find(x=>String(x.id)===String(v?.teacher_id));
+  // Prefer the canonical teacher name so accidental duplicate teacher IDs do not create
+  // two actual visits for the same person on the same day. Fall back to ID if unavailable.
+  return v10NormName(t?.full_name)||`id:${String(v?.teacher_id||"")}`;
+}
+function v10TeacherDateKey(v){ return `${v10TeacherIdentity(v)}||${v10Date(v)}`; }
+function v10Completeness(v){
+  const criteriaCount=v5CriteriaForVisit(v.id).length;
+  return criteriaCount*10 + (v.overall_rating?5:0) + (v.subject_id?2:0) + (v.department_id?1:0);
+}
+function v10ChooseBest(rows){
+  return (rows||[]).slice().sort((a,b)=>v10Completeness(b)-v10Completeness(a))[0]||null;
+}
+function v10GroupTeacherDate(rows){
+  const m=new Map();
+  (rows||[]).forEach(v=>{const k=v10TeacherDateKey(v);if(!m.has(k))m.set(k,[]);m.get(k).push(v);});
+  return [...m.values()];
+}
+function v8ActualVisits(rows,{source="official"}={}){
+  const allowed=(rows||[]).filter(v=>["قيادة عليا","قيادة وسطى"].includes(v8Level(v)));
+  return v10GroupTeacherDate(allowed).flatMap(g=>{
+    let candidates=g;
+    if(source==="upper") candidates=g.filter(v=>v8Level(v)==="قيادة عليا");
+    else if(source==="middle") candidates=g.filter(v=>v8Level(v)==="قيادة وسطى");
+    if(!candidates.length)return [];
+    let chosen;
+    if(source==="official" || source==="both"){
+      const upper=g.filter(v=>v8Level(v)==="قيادة عليا");
+      chosen=v10ChooseBest(upper.length?upper:g);
+    } else chosen=v10ChooseBest(candidates);
+    return [{...chosen,_shared:g.length>1,_members:g,_actualKey:v10TeacherDateKey(chosen),_sameDayDuplicate:g.length>1}];
+  }).sort((a,b)=>String(a.visit_date).localeCompare(String(b.visit_date)));
+}
+function v7ActualVisits(rows,{source="official",observerId=""}={}){
+  if(observerId){
+    const p=v8Profile(observerId);if(!p)return [];
+    const own=(rows||[]).filter(v=>v8Profile(v.observer_id)===p || [p.id,p.user_id].filter(Boolean).map(String).includes(String(v.observer_id)));
+    const ownGroups=v10GroupTeacherDate(own);
+    const official=v8ActualVisits(rows,{source:"official"});
+    return ownGroups.map(g=>{
+      const chosen=v10ChooseBest(g), shared=official.find(x=>x._members?.some(m=>g.includes(m)));
+      return {...chosen,_shared:!!shared?shared._shared:g.length>1,_members:shared?shared._members:g,_actualKey:v10TeacherDateKey(chosen)};
+    }).sort((a,b)=>String(a.visit_date).localeCompare(String(b.visit_date)));
+  }
+  return v8ActualVisits(rows,{source});
+}
+function v5VisitKey(v){return v10TeacherDateKey(v);}
+function v5VisitGroups(rows){return v10GroupTeacherDate(rows);}
+function v5ApprovedVisits(rows){return v8ActualVisits(rows,{source:"official"});}
+function v4SharedKey(v){return v10TeacherDateKey(v);}
+function v4AcceptedVisits(rows,source=v4AnalysisSource()){return v8ActualVisits(rows,{source:source==="all"?"both":source});}
+
+function v10CriterionMap(v){
+  const m={};v5CriteriaForVisit(v.id).forEach(r=>m[String(r.criterion_no)]=num(r.rating));return m;
+}
+function v10TeacherJourney(t,rows=visits){
+  const av=v8ActualVisits((rows||[]).filter(v=>String(v.teacher_id)===String(t.id)),{source:"official"});
+  return av.sort((a,b)=>String(a.visit_date).localeCompare(String(b.visit_date))).map((v,i)=>({...v,_visitNo:i+1,_criteria:v10CriterionMap(v)}));
+}
+function v10Move(a,b){
+  if(a==null||b==null)return "waiting";
+  a=num(a);b=num(b);return b>a?"improved":b<a?"declined":"stable";
+}
+function v10MoveLabel(k){return {improved:"تحسن",declined:"تراجع",stable:"ثبات",waiting:"بانتظار إعادة القياس"}[k]||"—";}
+function v10MoveBadge(k){const cls={improved:"success",declined:"danger",stable:"warning",waiting:"muted"}[k]||"muted";return `<span class="v5-badge ${cls}">${v10MoveLabel(k)}</span>`;}
+function v10OverallTransitions(journey){
+  const out=[];for(let i=1;i<journey.length;i++){const a=journey[i-1],b=journey[i];out.push({from:i,to:i+1,a,b,state:v10Move(a.overall_rating,b.overall_rating)});}return out;
+}
+function v10CriterionStatus(journey,c){
+  const seen=journey.filter(v=>v._criteria?.[String(c)]!=null);
+  if(!seen.length)return null;
+  const first=seen[0],last=seen[seen.length-1];
+  if(seen.length===1)return {c,first,last,state:"waiting",count:1};
+  return {c,first,last,state:v10Move(first._criteria[String(c)],last._criteria[String(c)]),count:seen.length};
+}
+function v10JourneyCriteria(journey){
+  const keys=[...new Set(journey.flatMap(v=>Object.keys(v._criteria||{})))].sort((a,b)=>num(a)-num(b));
+  return keys.map(c=>v10CriterionStatus(journey,c)).filter(Boolean);
+}
+function v10TeacherProgressBlock(t,journey){
+  if(!journey.length)return '<div class="analysis-note">لا توجد زيارات فعلية لهذه المعلمة.</div>';
+  const transitions=v10OverallTransitions(journey),criteria=v10JourneyCriteria(journey);
+  const trail=journey.map(v=>`<tr><td>الزيارة ${v._visitNo}</td><td>${esc(formatDate(v.visit_date))}</td><td>${esc(ratingLabel(v.overall_rating))}</td><td>${Object.entries(v._criteria||{}).filter(([,r])=>num(r)===1).map(([c])=>`م${esc(c)}`).join("، ")||"—"}</td><td>${v._shared?`مدمجة من ${v._members.length} إدخالات`:"إدخال واحد"}</td></tr>`).join("");
+  const trans=transitions.map(x=>`<tr><td>${x.from} ← ${x.to}</td><td>${esc(ratingLabel(x.a.overall_rating))}</td><td>${esc(ratingLabel(x.b.overall_rating))}</td><td>${v10MoveBadge(x.state)}</td></tr>`).join("");
+  const needs=criteria.filter(x=>num(x.first._criteria[String(x.c)])===1 || num(x.last._criteria[String(x.c)])===1);
+  const crit=needs.map(x=>`<tr><td>م${esc(x.c)}</td><td>${esc(ratingLabel(x.first._criteria[String(x.c)]))}<br><small>زيارة ${x.first._visitNo}</small></td><td>${x.count>1?`${esc(ratingLabel(x.last._criteria[String(x.c)]))}<br><small>زيارة ${x.last._visitNo}</small>`:"لم يُعد قياسه"}</td><td>${v10MoveBadge(x.state)}</td></tr>`).join("");
+  return `<h4>مسار تطور الأداء التراكمي</h4><div class="analysis-note"><strong>قاعدة العد:</strong> للمعلمة زيارة فعلية واحدة فقط في التاريخ نفسه. إذا تكرر الإدخال في اليوم نفسه يُدمج، ويُعتمد تقييم القيادة العليا عند وجوده.</div><div class="table-wrap"><table><thead><tr><th>الترتيب</th><th>التاريخ</th><th>الحكم العام</th><th>المعايير الجزئية</th><th>حالة السجل</th></tr></thead><tbody>${trail}</tbody></table></div><h4>تطور الحكم العام بين الزيارات</h4><div class="table-wrap"><table><thead><tr><th>الانتقال</th><th>من</th><th>إلى</th><th>النتيجة</th></tr></thead><tbody>${trans||'<tr><td colspan="4">تحتاج المعلمة زيارة ثانية لقياس التطور.</td></tr>'}</tbody></table></div><h4>إعادة قياس الاحتياجات والمعايير</h4><div class="table-wrap"><table><thead><tr><th>المعيار</th><th>أول رصد</th><th>آخر إعادة قياس</th><th>الحالة</th></tr></thead><tbody>${crit||'<tr><td colspan="4">لا توجد معايير جزئية تحتاج تتبعًا في الرصد المتاح.</td></tr>'}</tbody></table></div>`;
+}
+
+// Teacher 360 is cumulative by design; month is only a display cut-off, never a reset.
+renderTeacher360 = function(){
+  v8InitFilters();const out=$("teacher360Output"),tid=$("teacher360Filter")?.value||"",month=v8MonthValue("teacher360Month");if(!out)return;if(!tid){out.innerHTML='<article class="panel">اختاري المعلمة لعرض البطاقة.</article>';return;}
+  const t=teachers.find(x=>String(x.id)===String(tid));
+  const end=month?atharMonthEnd(month):null;
+  const raw=visits.filter(v=>String(v.teacher_id)===String(tid)&&(!end||new Date(v10Date(v)+'T12:00:00')<=end));
+  const journey=v10TeacherJourney(t,raw),cov=v6TeacherSubjectCoverage(t,raw),diag=v5TeacherDiagnosis(raw,tid);
+  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>${esc(t?.full_name||"")}</h3><p>${esc(v61TeacherDeptName(t))} • مسار تراكمي ${month?`حتى ${esc(v5MonthLabel(month))}`:"لكل الفترات"}</p></div><div class="v5-kpis"><b>${journey.length}<small>زيارات فعلية</small></b><b>${esc(v72Reliability(journey.length))}<small>موثوقية القراءة</small></b><b>${v5Badge(diag)}<small>الحالة</small></b><b>${v6CoverageBadge(cov)}<small>تغطية المواد</small></b></div></div>${v10TeacherProgressBlock(t,journey)}</article>`;
+};
+
+function v10ScopeTeachers(dept=""){
+  return activeRows(teachers).filter(t=>!dept||String(v8DeptIdForTeacher(t))===String(dept));
+}
+function v10ProgressDataset(dept="",month=""){
+  const end=month?atharMonthEnd(month):null;
+  return v10ScopeTeachers(dept).map(t=>{
+    const raw=visits.filter(v=>String(v.teacher_id)===String(t.id)&&(!end||new Date(v10Date(v)+'T12:00:00')<=end));
+    return {t,journey:v10TeacherJourney(t,raw)};
+  }).filter(x=>x.journey.length);
+}
+function v10RoundSummary(items){
+  const max=Math.max(0,...items.map(x=>x.journey.length));const rounds=[];
+  for(let n=1;n<=max;n++){
+    const rows=items.map(x=>x.journey[n-1]).filter(Boolean), counts={1:0,2:0,3:0,4:0};rows.forEach(v=>{const r=num(v.overall_rating);if(counts[r]!=null)counts[r]++;});
+    rounds.push({n,total:rows.length,counts});
+  }return rounds;
+}
+function v10TransitionSummary(items,n){
+  const eligible=items.filter(x=>x.journey.length>=n);
+  const basePartial=eligible.filter(x=>num(x.journey[n-1].overall_rating)===1);
+  const followed=basePartial.filter(x=>x.journey.length>=n+1);
+  const buckets={improved:[],stable:[],declined:[],waiting:[]};
+  followed.forEach(x=>buckets[v10Move(x.journey[n-1].overall_rating,x.journey[n].overall_rating)].push(x));
+  buckets.waiting=basePartial.filter(x=>x.journey.length<n+1);
+  return {basePartial,followed,buckets};
+}
+function v10TeacherLink(x){return `<button type="button" class="v10-name-link no-print" onclick="atharOpenTeacher('${esc(String(x.t.id))}')">${esc(x.t.full_name)}</button><span class="print-only">${esc(x.t.full_name)}</span>`;}
+function v10NamesCell(xs){return xs?.length?`<div class="v10-name-list">${xs.map(v10TeacherLink).join('')}</div>`:'<span class="muted">—</span>';}
+function v10RoundBuckets(items,n){
+  const b={1:[],2:[],3:[],4:[],other:[]};
+  items.forEach(x=>{const v=x.journey[n-1];if(!v)return;const r=num(v.overall_rating);(b[r]||b.other).push(x);});
+  return b;
+}
+function v10SchoolProgressHtml(items,title){
+  const rounds=v10RoundSummary(items);
+  const rhtml=rounds.map(r=>`<tr><td>الزيارة ${r.n}</td><td>${r.total}</td><td>${r.counts[1]} (${pct(r.counts[1],r.total)}%)</td><td>${r.counts[2]} (${pct(r.counts[2],r.total)}%)</td><td>${r.counts[3]} (${pct(r.counts[3],r.total)}%)</td><td>${r.counts[4]} (${pct(r.counts[4],r.total)}%)</td></tr>`).join("");
+  const details=rounds.map(r=>{const b=v10RoundBuckets(items,r.n);return `<details class="v10-round-details"><summary>أسماء المعلمات حسب الحكم — الزيارة ${r.n} (${r.total})</summary><div class="table-wrap"><table><thead><tr><th>الحكم</th><th>العدد</th><th>المعلمات</th></tr></thead><tbody><tr><td>يفي جزئيًا</td><td>${b[1].length}</td><td>${v10NamesCell(b[1])}</td></tr><tr><td>يفي تمامًا</td><td>${b[2].length}</td><td>${v10NamesCell(b[2])}</td></tr><tr><td>يتجاوز</td><td>${b[3].length}</td><td>${v10NamesCell(b[3])}</td></tr><tr><td>يتجاوز بكثير</td><td>${b[4].length}</td><td>${v10NamesCell(b[4])}</td></tr></tbody></table></div></details>`}).join('');
+  const thtml=rounds.slice(0,-1).map(r=>{const x=v10TransitionSummary(items,r.n);return `<tr><td>${r.n} ← ${r.n+1}</td><td>${x.basePartial.length}</td><td>${x.followed.length}</td><td>${x.buckets.improved.length}</td><td>${x.buckets.stable.length}</td><td>${x.buckets.waiting.length}</td></tr><tr class="v10-transition-names"><td colspan="6"><details><summary>عرض أسماء انتقال ${r.n} ← ${r.n+1}</summary><div class="v10-transition-grid"><div><strong>تحسن (${x.buckets.improved.length})</strong>${v10NamesCell(x.buckets.improved)}</div><div><strong>استمر جزئيًا (${x.buckets.stable.length})</strong>${v10NamesCell(x.buckets.stable)}</div><div><strong>بانتظار إعادة الزيارة (${x.buckets.waiting.length})</strong>${v10NamesCell(x.buckets.waiting)}</div>${x.buckets.declined.length?`<div><strong>تراجع (${x.buckets.declined.length})</strong>${v10NamesCell(x.buckets.declined)}</div>`:''}</div></details></td></tr>`}).join("");
+  return `<article class="panel v5-report"><div class="v5-report-head"><div><h3>${esc(title)}</h3><p>التحليل حسب ترتيب زيارة كل معلمة، وليس حسب بداية شهر جديد.</p></div><div class="v5-kpis"><b>${items.length}<small>معلمات لهن رصد</small></b><b>${rounds[0]?.total||0}<small>وصلن للزيارة 1</small></b><b>${rounds[1]?.total||0}<small>وصلن للزيارة 2</small></b><b>${rounds[2]?.total||0}<small>وصلن للزيارة 3</small></b></div></div><h4>تطور الحكم العام حسب ترتيب الزيارة</h4><div class="table-wrap"><table><thead><tr><th>ترتيب الزيارة</th><th>عدد المعلمات</th><th>يفي جزئيًا</th><th>يفي تمامًا</th><th>يتجاوز</th><th>يتجاوز بكثير</th></tr></thead><tbody>${rhtml||'<tr><td colspan="6">لا توجد بيانات.</td></tr>'}</tbody></table></div><h4>من هن المعلمات في كل حكم؟</h4>${details||'<div class="analysis-note">لا توجد بيانات أسماء.</div>'}<h4>ماذا حدث لمن حصلن على «يفي جزئيًا»؟</h4><div class="table-wrap"><table><thead><tr><th>الانتقال</th><th>جزئي في الزيارة السابقة</th><th>أُعيدت زيارتهن</th><th>تحسن</th><th>استمر جزئيًا</th><th>بانتظار إعادة الزيارة</th></tr></thead><tbody>${thtml||'<tr><td colspan="6">نحتاج زيارتين على الأقل لقياس الانتقال.</td></tr>'}</tbody></table></div></article>`;
+}
+function v10CriterionTransitions(items){
+  const max=Math.max(0,...items.map(x=>x.journey.length)), rows=[];
+  for(let n=1;n<max;n++){
+    for(let c=1;c<=18;c++){
+      const partial=items.filter(x=>num(x.journey[n-1]?._criteria?.[String(c)])===1);
+      if(!partial.length)continue;
+      const measured=partial.filter(x=>x.journey[n]?._criteria?.[String(c)]!=null);
+      const improved=measured.filter(x=>num(x.journey[n]._criteria[String(c)])>1);
+      const still=measured.filter(x=>num(x.journey[n]._criteria[String(c)])===1);
+      const declined=measured.filter(x=>num(x.journey[n]._criteria[String(c)])<1);
+      const waiting=partial.filter(x=>x.journey[n]?._criteria?.[String(c)]==null);
+      rows.push({n,c,partial,measured,improved,still,declined,waiting});
+    }
+  }
+  return rows;
+}
+function v10CriteriaTransitionsHtml(items){
+  const rows=v10CriterionTransitions(items);
+  if(!rows.length)return '<div class="analysis-note">لا توجد معايير جزئية يمكن تتبع انتقالها بين زيارتين متتاليتين حتى الآن.</div>';
+  return `<div class="table-wrap"><table><thead><tr><th>الانتقال</th><th>المعيار</th><th>جزئي في الزيارة السابقة</th><th>أعيد قياسه في التالية</th><th>تحسن</th><th>ما زال جزئيًا</th><th>لم يُقَس في التالية</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${x.n} ← ${x.n+1}</td><td>م${x.c}</td><td>${x.partial.length}</td><td>${x.measured.length}</td><td>${x.improved.length}</td><td>${x.still.length}</td><td>${x.waiting.length}</td></tr><tr class="v10-transition-names"><td colspan="7"><details><summary>أسماء م${x.c} في انتقال ${x.n} ← ${x.n+1}</summary><div class="v10-transition-grid"><div><strong>تحسن (${x.improved.length})</strong>${v10NamesCell(x.improved)}</div><div><strong>ما زال جزئيًا (${x.still.length})</strong>${v10NamesCell(x.still)}</div><div><strong>لم يُعد قياسه (${x.waiting.length})</strong>${v10NamesCell(x.waiting)}</div></div></details></td></tr>`).join('')}</tbody></table></div>`;
+}
+function renderPerformanceProgress(){
+  v8Fill("progressDept",activeRows(departments),"كل المدرسة",x=>x.id,x=>x.name);v8Fill("progressMonth",availableMonths(),"حتى آخر تاريخ متاح",x=>x,x=>v5MonthLabel(x));
+  const dept=$("progressDept")?.value||"",month=$("progressMonth")?.value||"",out=$("performanceProgressOutput");if(!out)return;const items=v10ProgressDataset(dept,month);
+  out.innerHTML=v10SchoolProgressHtml(items,dept?`تطور الأداء التراكمي — ${v5DeptName(dept)}`:"تطور الأداء التراكمي — مستوى المدرسة")+`<article class="panel v5-report"><h3>تطور الاحتياجات م1–م18 بين الزيارات</h3><div class="analysis-note"><strong>القاعدة:</strong> المقارنة هنا بين زيارتين متتاليتين للمعلمة نفسها. إذا لم يظهر المعيار في الزيارة التالية فلا يُحسب تحسنًا، بل «لم يُعد قياسه».</div>${v10CriteriaTransitionsHtml(items)}</article>`;
+}
+
+// Department 360 keeps its existing coverage reading and adds the cumulative journey.
+const v10OldRenderDepartment360=renderDepartment360;
+renderDepartment360=function(){v10OldRenderDepartment360();const dept=$("dept360Filter")?.value||"",month=$("dept360MonthFilter")?.value||"",out=$("department360Output");if(!out||!dept)return;const items=v10ProgressDataset(dept,month);out.insertAdjacentHTML("beforeend",v10SchoolProgressHtml(items,`مسار تطور القسم — ${v5DeptName(dept)}`));};
+
+// Data quality: same teacher/date duplicates are explicitly surfaced for audit, while counted once analytically.
+const v10OldQuality=v72Quality;
+v72Quality=function(month){const issues=v10OldQuality(month),raw=visits.filter(v=>!month||monthKey(v.visit_date)===month);v10GroupTeacherDate(raw).filter(g=>g.length>1).forEach(g=>issues.push([v10TeacherDateKey(g[0]),`تكرار إدخال لنفس المعلمة في التاريخ نفسه (${g.length} سجلات) — يُحتسب تحليليًا كزيارة واحدة`]));return issues;};
+
+/* ===== V10.2 compact leadership progress dashboard ===== */
+function v102CriterionRowsForTransition(items,n){
+  const all=v10CriterionTransitions(items);
+  return all.filter(x=>x.n===n);
+}
+function v102CriterionName(x){return atharCriterionLabel(x.c);}
+function v102SummaryCards(items,n){
+  const rows=v102CriterionRowsForTransition(items,n);
+  if(!rows.length)return '<div class="analysis-note">لا توجد احتياجات جزئية قابلة للمقارنة في هذا الانتقال حتى الآن.</div>';
+  const persistent=rows.filter(x=>x.still.length).sort((a,b)=>b.still.length-a.still.length).slice(0,5);
+  const improved=rows.filter(x=>x.improved.length).sort((a,b)=>b.improved.length-a.improved.length).slice(0,5);
+  const waiting=rows.filter(x=>x.waiting.length).sort((a,b)=>b.waiting.length-a.waiting.length).slice(0,5);
+  const list=(xs,key,empty)=>xs.length?`<ol class="v102-rank">${xs.map(x=>`<li><strong>${v102CriterionName(x)}</strong><span>${x[key].length}</span></li>`).join('')}</ol>`:`<div class="muted">${empty}</div>`;
+  return `<div class="v102-summary-grid"><section><h4>أبرز الاحتياجات المستمرة</h4>${list(persistent,'still','لا توجد احتياجات مستمرة مقاسة في هذا الانتقال.')}</section><section><h4>أبرز المعايير التي ظهر فيها تحسن</h4>${list(improved,'improved','لم يظهر تحسن مثبت حتى الآن.')}</section><section><h4>تحتاج إعادة قياس</h4>${list(waiting,'waiting','لا توجد حالات معلقة لإعادة القياس.')}</section></div>`;
+}
+function v102CriteriaTable(items,n){
+  const rows=v102CriterionRowsForTransition(items,n);
+  if(!rows.length)return '<div class="analysis-note">لا توجد معايير جزئية يمكن تتبعها في هذا الانتقال.</div>';
+  return `<div class="table-wrap"><table class="v102-criteria-table"><thead><tr><th>المعيار</th><th>ظهر كاحتياج</th><th>أعيد قياسه</th><th>تحسن</th><th>ما زال احتياجًا</th><th>ينتظر إعادة القياس</th></tr></thead><tbody>${rows.map(x=>`<tr><td><strong>${esc(v102CriterionName(x))}</strong></td><td>${x.partial.length}</td><td>${x.measured.length}</td><td>${x.improved.length?`<button class="v102-count" onclick="v102ToggleDetail('v102-${n}-${x.c}-improved')">${x.improved.length}</button>`:'0'}</td><td>${x.still.length?`<button class="v102-count" onclick="v102ToggleDetail('v102-${n}-${x.c}-still')">${x.still.length}</button>`:'0'}</td><td>${x.waiting.length?`<button class="v102-count" onclick="v102ToggleDetail('v102-${n}-${x.c}-waiting')">${x.waiting.length}</button>`:'0'}</td></tr><tr id="v102-${n}-${x.c}-improved" class="v102-detail-row" hidden><td colspan="6"><strong>م${x.c} — تحسن:</strong>${v10NamesCell(x.improved)}</td></tr><tr id="v102-${n}-${x.c}-still" class="v102-detail-row" hidden><td colspan="6"><strong>م${x.c} — ما زال احتياجًا:</strong>${v10NamesCell(x.still)}</td></tr><tr id="v102-${n}-${x.c}-waiting" class="v102-detail-row" hidden><td colspan="6"><strong>م${x.c} — بانتظار إعادة القياس:</strong>${v10NamesCell(x.waiting)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function v102ToggleDetail(id){const el=document.getElementById(id);if(el)el.hidden=!el.hidden;}
+function v102CriteriaSection(items){
+  const max=Math.max(0,...items.map(x=>x.journey.length));
+  if(max<2)return '<article class="panel v5-report"><h3>تطور الاحتياجات م1–م18</h3><div class="analysis-note">نحتاج زيارة ثانية على الأقل لبعض المعلمات لقياس تطور الاحتياجات.</div></article>';
+  const ns=[];for(let n=1;n<max;n++)ns.push(n);
+  const first=ns[0];
+  return `<article class="panel v5-report"><div class="v5-report-head"><div><h3>تطور الاحتياجات م1–م18</h3><p>اختاري الانتقال لعرض الخلاصة والتفاصيل. الأسماء لا تظهر إلا عند الضغط على الرقم.</p></div></div><div class="v102-tabs no-print">${ns.map(n=>`<button type="button" class="v102-tab ${n===first?'active':''}" data-v102n="${n}" onclick="v102SelectTransition(${n})">الزيارة ${n} ← ${n+1}</button>`).join('')}</div>${ns.map(n=>`<section class="v102-transition-panel" data-v102panel="${n}" ${n===first?'':'hidden'}>${v102SummaryCards(items,n)}${v102CriteriaTable(items,n)}</section>`).join('')}<div class="analysis-note"><strong>قاعدة القياس:</strong> غياب المعيار في الزيارة التالية لا يعني تحسنًا؛ يظهر «بانتظار إعادة القياس» حتى يُقاس مرة أخرى.</div></article>`;
+}
+function v102SelectTransition(n){
+  document.querySelectorAll('.v102-transition-panel').forEach(x=>x.hidden=String(x.dataset.v102panel)!==String(n));
+  document.querySelectorAll('.v102-tab').forEach(x=>x.classList.toggle('active',String(x.dataset.v102n)===String(n)));
+}
+function v102LeadershipReading(items){
+  const rounds=v10RoundSummary(items), max=Math.max(0,...items.map(x=>x.journey.length));
+  if(!rounds.length)return '<div class="analysis-note">لا توجد بيانات كافية لإصدار قراءة قيادية.</div>';
+  const r1=rounds[0], r2=rounds[1];
+  let text=`تم رصد ${items.length} معلمة. `;
+  if(r2){const x=v10TransitionSummary(items,1);text+=`من ${x.basePartial.length} معلمات حصلن على «يفي جزئيًا» في الزيارة الأولى، أُعيدت زيارة ${x.followed.length}؛ تحسن ${x.buckets.improved.length} واستمر ${x.buckets.stable.length}، بينما تنتظر ${x.buckets.waiting.length} إعادة الزيارة. `;}
+  const crows=v102CriterionRowsForTransition(items,1), topStill=crows.filter(x=>x.still.length).sort((a,b)=>b.still.length-a.still.length)[0], topWait=crows.filter(x=>x.waiting.length).sort((a,b)=>b.waiting.length-a.waiting.length)[0];
+  if(topStill){const n=topStill.still.length, tied=crows.filter(x=>x.still.length===n).map(x=>`م${x.c}`).join("، ");text+=`أبرز الاحتياجات المستمرة في انتقال 1 ← 2: ${tied} بواقع ${n} لكل معيار. `;}
+  if(topWait){const n=topWait.waiting.length, tied=crows.filter(x=>x.waiting.length===n).map(x=>`م${x.c}`).join("، ");text+=`وتحتاج ${tied} إلى إعادة قياس بواقع ${n} لكل معيار.`;}
+  const limited=rounds.filter(r=>r.n>=3&&r.total<5).map(r=>`الزيارة ${r.n} (${r.total})`);
+  return `<article class="panel v5-report v102-reading"><h3>قراءة قيادية</h3><p>${text}</p>${limited.length?`<div class="analysis-note warning"><strong>تنبيه:</strong> العينة محدودة في ${limited.join('، ')}؛ لذلك لا يُعمم اتجاهها على مستوى المدرسة/القسم.</div>`:''}</article>`;
+}
+function v103VisibleNamesByVisit(items){
+  const rounds=v10RoundSummary(items);
+  if(!rounds.length)return '<article class="panel v5-report"><h3>أسماء المعلمات حسب الحكم وترتيب الزيارة</h3><div class="analysis-note">لا توجد بيانات أسماء.</div></article>';
+  const labels=['','يفي جزئيًا','يفي تمامًا','يتجاوز','يتجاوز بكثير'];
+  return `<article class="panel v5-report v103-names"><div class="v5-report-head"><div><h3>أسماء المعلمات حسب الحكم وترتيب الزيارة</h3><p>جدول مستقل لكل زيارة؛ الأسماء ظاهرة دائمًا في الشاشة والطباعة، والضغط على اسم المعلمة يفتح بطاقة 360°.</p></div></div>${rounds.map(r=>{const b=v10RoundBuckets(items,r.n);return `<section class="v103-visit-block"><h4>الزيارة ${r.n} — ${r.total} معلمة</h4><div class="table-wrap"><table class="v103-names-table"><thead><tr><th>الحكم</th><th>العدد</th><th>أسماء المعلمات</th></tr></thead><tbody>${[1,2,3,4].map(k=>`<tr><td><strong>${labels[k]}</strong></td><td>${b[k].length}</td><td>${v10NamesCell(b[k])}</td></tr>`).join('')}</tbody></table></div></section>`}).join('')}</article>`;
+}
+function v104DepartmentProgressSection(items,selectedDept=""){
+  const groups=new Map();
+  items.forEach(x=>{
+    const did=String(v8DeptIdForTeacher(x.t)||"");
+    if(selectedDept && did!==String(selectedDept))return;
+    if(!groups.has(did))groups.set(did,[]);
+    groups.get(did).push(x);
+  });
+  const rows=[...groups.entries()].map(([did,xs])=>{
+    const r=v10RoundSummary(xs), t=v10TransitionSummary(xs,1);
+    const r1=r[0]||{total:0,counts:{1:0,2:0,3:0,4:0}}, r2=r[1]||{total:0,counts:{1:0,2:0,3:0,4:0}};
+    return {did,name:did?v5DeptName(did):"غير محدد",xs,r1,r2,t};
+  }).sort((a,b)=>a.name.localeCompare(b.name,"ar"));
+  if(!rows.length)return `<article class="panel v5-report"><h3>التطور الأكاديمي حسب القسم</h3><div class="analysis-note">لا توجد بيانات أقسام ضمن النطاق الحالي.</div></article>`;
+  const body=rows.map(g=>`<tr><td><strong>${esc(g.name)}</strong></td><td>${g.xs.length}</td><td>${g.r2.total}</td><td>${g.r1.counts[1]}</td><td>${g.r1.counts[2]}</td><td>${g.r1.counts[3]+g.r1.counts[4]}</td><td>${g.r2.counts[1]}</td><td>${g.t.buckets.improved.length}</td><td>${g.t.buckets.stable.length}</td><td>${g.t.buckets.waiting.length}</td></tr>`).join("");
+  return `<article class="panel v5-report v104-dept-progress"><div class="v5-report-head"><div><h3>التطور الأكاديمي حسب القسم</h3><p>قراءة مستقلة تقارن مسار الزيارات داخل كل قسم، مع بقاء التحليل تراكميًا حسب ترتيب زيارة كل معلمة.</p></div></div><div class="table-wrap"><table><thead><tr><th>القسم</th><th>معلمات لهن رصد</th><th>وصلن للزيارة 2</th><th>جزئيًا — زيارة 1</th><th>تمامًا — زيارة 1</th><th>تجاوز — زيارة 1</th><th>جزئيًا — زيارة 2</th><th>تحسن من الجزئي</th><th>استمر جزئيًا</th><th>بانتظار إعادة زيارة</th></tr></thead><tbody>${body}</tbody></table></div><div class="analysis-note"><strong>مهم:</strong> المقارنة بين الأقسام تُقرأ مع حجم العينة؛ القسم الذي لم تصل فيه معلمات كافيات للزيارة الثانية لا يُحكم على اتجاه تطوره بعد.</div></article>`;
+}
+function v102OverallCompact(items,title){
+  const rounds=v10RoundSummary(items);
+  const rhtml=rounds.map(r=>`<tr><td>الزيارة ${r.n}</td><td>${r.total}</td>${[1,2,3,4].map(k=>`<td><button type="button" class="v102-rating-count" onclick="v102ToggleDetail('v102-round-${r.n}-${k}')">${r.counts[k]} <small>(${pct(r.counts[k],r.total)}%)</small></button></td>`).join('')}</tr>${[1,2,3,4].map(k=>{const b=v10RoundBuckets(items,r.n);return `<tr id="v102-round-${r.n}-${k}" class="v102-detail-row" hidden><td colspan="6"><strong>${['','يفي جزئيًا','يفي تمامًا','يتجاوز','يتجاوز بكثير'][k]} — الزيارة ${r.n}:</strong>${v10NamesCell(b[k])}</td></tr>`}).join('')}`).join('');
+  const thtml=rounds.slice(0,-1).map(r=>{const x=v10TransitionSummary(items,r.n);return `<tr><td>${r.n} ← ${r.n+1}</td><td>${x.basePartial.length}</td><td>${x.followed.length}</td><td><button class="v102-count" onclick="v102ToggleDetail('v102-move-${r.n}-improved')">${x.buckets.improved.length}</button></td><td><button class="v102-count" onclick="v102ToggleDetail('v102-move-${r.n}-stable')">${x.buckets.stable.length}</button></td><td><button class="v102-count" onclick="v102ToggleDetail('v102-move-${r.n}-waiting')">${x.buckets.waiting.length}</button></td></tr><tr id="v102-move-${r.n}-improved" class="v102-detail-row" hidden><td colspan="6"><strong>تحسن:</strong>${v10NamesCell(x.buckets.improved)}</td></tr><tr id="v102-move-${r.n}-stable" class="v102-detail-row" hidden><td colspan="6"><strong>استمر جزئيًا:</strong>${v10NamesCell(x.buckets.stable)}</td></tr><tr id="v102-move-${r.n}-waiting" class="v102-detail-row" hidden><td colspan="6"><strong>بانتظار إعادة الزيارة:</strong>${v10NamesCell(x.buckets.waiting)}</td></tr>`}).join('');
+  return `<article class="panel v5-report"><div class="v5-report-head"><div><h3>${esc(title)}</h3><p>التحليل حسب ترتيب زيارة كل معلمة، وليس حسب الشهر.</p></div><div class="v5-kpis"><b>${items.length}<small>معلمات لهن رصد</small></b><b>${rounds[0]?.total||0}<small>وصلن للزيارة 1</small></b><b>${rounds[1]?.total||0}<small>وصلن للزيارة 2</small></b><b>${rounds[2]?.total||0}<small>وصلن للزيارة 3</small></b></div></div><h4>تطور الحكم العام حسب ترتيب الزيارة</h4><div class="analysis-note">اضغطي على أي رقم لإظهار أسماء المعلمات وراءه.</div><div class="table-wrap"><table><thead><tr><th>ترتيب الزيارة</th><th>عدد المعلمات</th><th>يفي جزئيًا</th><th>يفي تمامًا</th><th>يتجاوز</th><th>يتجاوز بكثير</th></tr></thead><tbody>${rhtml||'<tr><td colspan="6">لا توجد بيانات.</td></tr>'}</tbody></table></div><h4>ماذا حدث لمن حصلن على «يفي جزئيًا»؟</h4><div class="table-wrap"><table><thead><tr><th>الانتقال</th><th>جزئي في السابقة</th><th>أعيدت زيارتهن</th><th>تحسن</th><th>استمر جزئيًا</th><th>بانتظار إعادة الزيارة</th></tr></thead><tbody>${thtml||'<tr><td colspan="6">نحتاج زيارتين على الأقل لقياس الانتقال.</td></tr>'}</tbody></table></div></article>`;
+}
+renderPerformanceProgress=function(){
+  v8Fill("progressDept",activeRows(departments),"كل المدرسة",x=>x.id,x=>x.name);v8Fill("progressMonth",availableMonths(),"حتى آخر تاريخ متاح",x=>x,x=>v5MonthLabel(x));
+  const dept=$("progressDept")?.value||"",month=$("progressMonth")?.value||"",out=$("performanceProgressOutput");if(!out)return;const items=v10ProgressDataset(dept,month);
+  out.innerHTML=v102OverallCompact(items,dept?`تطور الأداء التراكمي — ${v5DeptName(dept)}`:"تطور الأداء التراكمي — مستوى المدرسة")+v103VisibleNamesByVisit(items)+v102LeadershipReading(items)+v102CriteriaSection(items)+v104DepartmentProgressSection(items,dept);
+};

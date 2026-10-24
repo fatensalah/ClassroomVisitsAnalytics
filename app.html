@@ -239,6 +239,7 @@
 
 
       <button data-view="teacher360"><span>◍</span> بطاقة المعلمة 360°</button>
+      <button data-view="performanceProgress"><span>↗</span> تطور الأداء التراكمي</button>
       <button data-view="criteriaMatrix"><span>▥</span> مصفوفة م1–م18</button>
       <button data-view="nextVisits"><span>➜</span> خطة الزيارات القادمة</button>
       <button data-view="decisionCenter"><span>✦</span> مركز قرارات القيادة</button>
@@ -2258,6 +2259,13 @@
 
     <section id="teacher360View" class="view hidden"><div class="analysis-hero monthly-hero"><div><h2>بطاقة المعلمة 360°</h2><p>خط زمني موحد للزيارة والتشخيص والمواد والمعايير والدعم والأثر.</p></div></div><article class="panel no-print"><div class="analysis-filter-bar"><label>المعلمة<select id="teacher360Filter" onchange="renderTeacher360()"></select></label><label>الشهر<select id="teacher360Month" onchange="renderTeacher360()"></select></label><div></div><button class="btn" type="button" onclick="window.print()">طباعة البطاقة</button></div></article><div id="teacher360Output"></div></section>
 
+
+    <section id="performanceProgressView" class="view hidden">
+      <div class="analysis-hero overall-hero"><div><h2>تطور الأداء التراكمي</h2><p>قياس تطور الحكم العام والمعايير عبر الزيارة الأولى والثانية والثالثة لكل معلمة، على مستوى المدرسة والقسم.</p></div></div>
+      <article class="panel no-print"><div class="analysis-filter-bar"><label>القسم<select id="progressDept" onchange="renderPerformanceProgress()"></select></label><label>حتى الفترة<select id="progressMonth" onchange="renderPerformanceProgress()"></select></label><div></div><button class="btn" type="button" onclick="window.print()">طباعة / PDF</button></div></article>
+      <div id="performanceProgressOutput"></div>
+    </section>
+
     <section id="criteriaMatrixView" class="view hidden"><div class="analysis-hero overall-hero"><div><h2>مصفوفة المعلمات × م1–م18</h2><p>قراءة مدرسية سريعة لمواضع التكرار والقوة والمتابعة.</p></div></div><article class="panel no-print"><div class="analysis-filter-bar"><label>الشهر<select id="matrixMonth" onchange="renderCriteriaMatrix()"></select></label><label>القسم<select id="matrixDept" onchange="renderCriteriaMatrix()"></select></label><div></div><button class="btn" type="button" onclick="window.print()">طباعة / PDF</button></div></article><div id="criteriaMatrixOutput"></div></section>
 
     <section id="nextVisitsView" class="view hidden"><div class="analysis-hero monthly-hero"><div><h2>خطة الزيارات القادمة</h2><p>أولوية مقترحة مبنية على فجوات التغطية، التحقق، الدعم، وإعادة القياس.</p></div></div><article class="panel no-print"><div class="analysis-filter-bar"><label>الشهر<select id="nextVisitsMonth" onchange="renderNextVisits()"></select></label><label>القسم<select id="nextVisitsDept" onchange="renderNextVisits()"></select></label><div></div><button class="btn" type="button" onclick="window.print()">طباعة الخطة</button></div></article><div id="nextVisitsOutput"></div></section>
@@ -2652,6 +2660,12 @@
 
             </label>
 
+            <label>
+              القسم
+              <select id="newTeacherDept" required>
+                <option value="">اختاري القسم</option>
+              </select>
+            </label>
 
             <button
               class="btn btn-primary"
@@ -2668,6 +2682,13 @@
 
           </form>
 
+        </article>
+
+        <article class="panel" style="grid-column: 1 / -1;">
+          <div class="panel-head">
+            <h3>المعلمات وربط الأقسام</h3>
+          </div>
+          <div id="teacherDepartmentManager"></div>
         </article>
 
 
