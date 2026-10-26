@@ -394,12 +394,6 @@ async function loadAll() {
 
       sb
         .from(
-          "visit_criteria"
-        )
-        .select("*"),
-
-      sb
-        .from(
           "visit_feedback"
         )
         .select("*"),
@@ -459,7 +453,6 @@ async function loadAll() {
     departments,
     criteria,
     visits,
-    ratings,
     feedback,
     visitSkills,
     studentWork,
@@ -471,6 +464,40 @@ async function loadAll() {
       item =>
         item.data || []
     );
+
+  // V10.10: load visit criteria only for the visits in the active academic year.
+  // Supabase returns a limited number of rows per request by default; loading the
+  // whole visit_criteria table could therefore omit the newest ratings and make
+  // the visit-details modal show "—" even though all 18 ratings are saved.
+  ratings = [];
+
+  const activeVisitIds = visits
+    .map(visit => visit.id)
+    .filter(Boolean);
+
+  if (activeVisitIds.length) {
+    const pageSize = 1000;
+
+    for (let from = 0; ; from += pageSize) {
+      const ratingsReq = await sb
+        .from("visit_criteria")
+        .select("*")
+        .in("visit_id", activeVisitIds)
+        .order("id", { ascending: true })
+        .range(from, from + pageSize - 1);
+
+      if (ratingsReq.error) {
+        throw ratingsReq.error;
+      }
+
+      const page = ratingsReq.data || [];
+      ratings.push(...page);
+
+      if (page.length < pageSize) {
+        break;
+      }
+    }
+  }
 
   // V10.9: load the live subject catalogue from Supabase first.
   // This is the source of truth for department/subject relationships.
