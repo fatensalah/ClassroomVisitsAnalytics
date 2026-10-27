@@ -11712,17 +11712,78 @@ function v5VisitsForObserver(rows, observerId){
 }
 function v5CriteriaForVisit(visitId){ return ratings.filter(r=>String(r.visit_id)===String(visitId)); }
 function v5TeacherDiagnosis(rows, teacherId){
-  const tv=v5ApprovedVisits(rows.filter(v=>String(v.teacher_id)===String(teacherId))).sort((a,b)=>String(a.visit_date).localeCompare(String(b.visit_date)));
-  if(!tv.length) return {key:"unvisited",label:"لم تتم الزيارة",reason:"لا توجد زيارة معتمدة في النطاق",score:0,partial:[],repeat:[]};
+  // V10.13 — LONGITUDINAL FOLLOW-UP:
+  // The month is only a display/date boundary. Diagnosis never restarts at the
+  // beginning of a new month. First actual visit = initial reading; every later
+  // visit is follow-up against the teacher's previous approved visits.
+  const scopeTeacherRows=(rows||[]).filter(v=>String(v.teacher_id)===String(teacherId));
+
+  if(!scopeTeacherRows.length){
+    return {key:"unvisited",label:"لم تتم الزيارة",reason:"لا توجد زيارة معتمدة في النطاق",score:0,partial:[],repeat:[]};
+  }
+
+  const cutoff=scopeTeacherRows
+    .map(v=>String(v.visit_date||"").slice(0,10))
+    .filter(Boolean)
+    .sort()
+    .slice(-1)[0] || "";
+
+  // Preserve the department context of the current view. This is essential for
+  // cross-department teachers such as Fatima Al-Bashir.
+  const scopeDeptIds=[...new Set(
+    scopeTeacherRows
+      .map(v=>typeof v10_12DeptIdForVisit==="function" ? v10_12DeptIdForVisit(v) : (v.department_id??""))
+      .filter(x=>x!==undefined && x!==null && String(x)!=="")
+      .map(String)
+  )];
+
+  const historyRows=visits.filter(v=>{
+    if(String(v.teacher_id)!==String(teacherId)) return false;
+    const d=String(v.visit_date||"").slice(0,10);
+    if(cutoff && d>cutoff) return false;
+    if(scopeDeptIds.length){
+      const vd=String(typeof v10_12DeptIdForVisit==="function" ? v10_12DeptIdForVisit(v) : (v.department_id??""));
+      if(!scopeDeptIds.includes(vd)) return false;
+    }
+    return true;
+  });
+
+  const tv=v5ApprovedVisits(historyRows)
+    .sort((a,b)=>String(a.visit_date).localeCompare(String(b.visit_date)));
+
+  if(!tv.length){
+    return {key:"unvisited",label:"لم تتم الزيارة",reason:"لا توجد زيارة معتمدة في النطاق",score:0,partial:[],repeat:[]};
+  }
+
   const partial=[]; const count={};
-  tv.forEach(v=>v5CriteriaForVisit(v.id).filter(r=>num(r.rating)===1).forEach(r=>{const c=String(r.criterion_no); partial.push(c); count[c]=(count[c]||0)+1;}));
+  tv.forEach(v=>v5CriteriaForVisit(v.id).filter(r=>num(r.rating)===1).forEach(r=>{
+    const c=String(r.criterion_no);
+    partial.push(c);
+    count[c]=(count[c]||0)+1;
+  }));
+
   const repeat=Object.entries(count).filter(([,n])=>n>=2).map(([c])=>c);
   const distinct=[...new Set(partial)];
-  if(tv.length===1) return {key:"initial",label:"قراءة أولية",reason:distinct.length?`زيارة واحدة؛ ظهر جزئي في م${distinct.join("، م")}`:"زيارة واحدة فقط؛ يلزم رصد مستقل آخر",score:1,partial:distinct,repeat};
+
+  if(tv.length===1){
+    return {
+      key:"initial",
+      label:"قراءة أولية",
+      reason:distinct.length?`الزيارة الأولى؛ ظهر جزئي في م${distinct.join("، م")}`:"الزيارة الأولى فقط؛ الزيارة التالية ستكون متابعة",
+      score:1,partial:distinct,repeat
+    };
+  }
+
   if(repeat.length) return {key:"priority",label:"أولى بالرعاية",reason:`تكرر التقييم الجزئي في م${repeat.join("، م")} عبر زيارات مستقلة`,score:4,partial:distinct,repeat};
-  if(distinct.length>=2) return {key:"targeted",label:"دعم مستهدف",reason:`ظهرت مؤشرات جزئية في ${distinct.length} معايير: م${distinct.join("، م")}`,score:3,partial:distinct,repeat};
-  if(distinct.length===1) return {key:"verify",label:"متابعة للتحقق",reason:`ظهر جزئي في م${distinct[0]} دون تكرار مستقل حتى الآن`,score:2,partial:distinct,repeat};
-  return {key:"stable",label:"مستقرة في الرصد المتاح",reason:"لا توجد مؤشرات جزئية في الزيارات المعتمدة ضمن النطاق",score:0,partial:[],repeat:[]};
+  if(distinct.length>=2) return {key:"targeted",label:"دعم مستهدف",reason:`متابعة تراكمية بعد ${tv.length} زيارات؛ ظهرت مؤشرات جزئية في ${distinct.length} معايير: م${distinct.join("، م")}`,score:3,partial:distinct,repeat};
+  if(distinct.length===1) return {key:"verify",label:"متابعة للتحقق",reason:`متابعة تراكمية بعد ${tv.length} زيارات؛ ظهر جزئي في م${distinct[0]} دون تكرار مستقل حتى الآن`,score:2,partial:distinct,repeat};
+
+  return {
+    key:"stable",
+    label:"مستقرة في الرصد المتاح",
+    reason:`متابعة تراكمية بعد ${tv.length} زيارات؛ لا توجد مؤشرات جزئية في الزيارات المعتمدة`,
+    score:0,partial:[],repeat:[]
+  };
 }
 function v5Badge(d){ const cls={priority:"danger",targeted:"warning",verify:"info",initial:"muted",stable:"success",unvisited:"muted"}[d.key]||"muted"; return `<span class="v5-badge ${cls}">${esc(d.label)}</span>`; }
 function v5RowsForScope(month,dept){ return visits.filter(v=>(!month||monthKey(v.visit_date)===month)&&(!dept||String(v.department_id)===String(dept))); }
@@ -12271,7 +12332,7 @@ function v7EnsureFilterOptions(){
   const force=(id,rows,ph,vf,lf)=>{const el=$(id);if(!el)return;const old=el.value;v5FillSelect(id,rows,ph,vf,lf);if(old&&[...el.options].some(o=>o.value===old))el.value=old;};
   const months=availableMonths();
   force("leadershipMonthFilter",months,"كل الأشهر",x=>x,x=>v5MonthLabel(x)); force("followupMonthFilter",months,"كل الأشهر",x=>x,x=>v5MonthLabel(x)); force("dept360MonthFilter",months,"كل الأشهر",x=>x,x=>v5MonthLabel(x));
-  force("leadershipDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name); force("followupDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name); force("dept360Filter",activeRows(departments),"اختر القسم",x=>x.id,x=>x.name);
+  force("leadershipDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name); force("followupDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name); force("dept360Filter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name);
   force("leadershipObserverFilter",v5LeadershipProfiles(),"اختر عضو القيادة",x=>x.id,x=>`${x.full_name||x.email} — ${leadershipLevel(x)}`);
 }
 function renderLeadershipTracking(){
@@ -12339,7 +12400,7 @@ function v7EnsureFilterOptions(){
   const force=(id,rows,ph,vf,lf)=>{const el=$(id);if(!el)return;const old=el.value;v5FillSelect(id,rows,ph,vf,lf);if(old&&[...el.options].some(o=>o.value===old))el.value=old;};
   const months=availableMonths();
   force("leadershipMonthFilter",months,"كل الأشهر",x=>x,x=>v5MonthLabel(x)); force("followupMonthFilter",months,"كل الأشهر",x=>x,x=>v5MonthLabel(x)); force("dept360MonthFilter",months,"كل الأشهر",x=>x,x=>v5MonthLabel(x));
-  force("leadershipDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name); force("followupDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name); force("dept360Filter",activeRows(departments),"اختر القسم",x=>x.id,x=>x.name);
+  force("leadershipDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name); force("followupDeptFilter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name); force("dept360Filter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name);
   force("leadershipObserverFilter",v5LeadershipProfiles(),"اختر عضو القيادة",x=>v71LeadershipValue(x),x=>`${x.full_name||x.email} — ${leadershipLevel(x)}`);
   v71BindLeadershipControls();
 }
@@ -12480,30 +12541,102 @@ const V8_DEPT_MAP=[
   {keys:["فاطمه الحامد","فاطمة الحامد","عاليه","عالية","الاء","آلاء"], dept:["العربي","العربية والتربية الإسلامية","اللغة العربية والتربية الإسلامية"]},
   {keys:["اروي","أروى","نوره سعيد","نورة سعيد","جوري"], dept:["الرياضيات والعلوم"]},
   {keys:["حنان","مها بسيوني","هيفاء","دانه جمال","دانة جمال","شريفه الرويعي","شريفة الرويعي","ختام","فاطمه المطر","فاطمة المطر","نجود","لطيفه","لطيفة","نوره يحي","نورة يحي"], dept:["نظام فصل"]},
-  {keys:["امال","آمال","مني الحلو","منى الحلو","مشاعل","مروه محمد صالح","مروة محمد صالح","مروه الحسيني","مروة الحسيني","نوال المراغي","فاطمه الرويعي","فاطمة الرويعي","فاطمه البشير","فاطمة البشير","نوال الحربي"], dept:["المواد الاثرائيه","المواد الإثرائية"]},
-  {keys:["عبير الطيري"], dept:["الاجتماعيات والمواطنه","الاجتماعيات والمواطنة"]},
+  {keys:["امال","آمال","مني الحلو","منى الحلو","مشاعل","مروه محمد صالح","مروة محمد صالح","مروه الحسيني","مروة الحسيني","نوال المراغي","فاطمه الرويعي","فاطمة الرويعي"], dept:["المواد الاثرائيه","المواد الإثرائية"]},
+  {keys:["عبير الطيري","نوال الحربي"], dept:["الاجتماعيات والمواطنه","الاجتماعيات والمواطنة"]},
   {keys:["ساجده","ساجدة","مها الشمري","نوره الدوسري","نورة الدوسري"], dept:["التوحد"]},
   {keys:["زينب اسماعيل","زينب إسماعيل"], dept:["صعوبات التعلم"]},
-  {keys:["ايمان عبدالرضا","إيمان عبدالرضا"], dept:["الدمج"]}
+  {keys:["ايمان المطوع","إيمان المطوع"], dept:["الدمج"]}
 ];
-function v8AliasMatch(full,alias){const ft=new Set(v8Norm(full).split(" ").filter(Boolean)),at=v8Norm(alias).split(" ").filter(Boolean);return at.length&&at.every(x=>ft.has(x));}
+
+function v8AliasMatch(full,alias){
+  const ft=new Set(v8Norm(full).split(" ").filter(Boolean)),
+        at=v8Norm(alias).split(" ").filter(Boolean);
+  return at.length&&at.every(x=>ft.has(x));
+}
+
+function v8DeptByNames(names){
+  const d=departments.find(d=>(names||[]).some(n=>v8Norm(d.name).includes(v8Norm(n))||v8Norm(n).includes(v8Norm(d.name))));
+  return d?String(d.id):"";
+}
+
+// V10.12 — verified teacher overrides.
+// These are used before a stale/mistaken teachers.department_id value.
+const V10_12_TEACHER_DEPT_OVERRIDES=[
+  {keys:["امانه","أمانة"], dept:["الانجليزي","الإنجليزية","اللغة الإنجليزية"]},
+  {keys:["نوره العليوي","نورة العليوي"], dept:["نظام فصل"]},
+  {keys:["مها الشمري"], dept:["التوحد"]},
+  {keys:["ايمان المطوع","إيمان المطوع"], dept:["الدمج"]}
+];
+
 function v8DeptIdForTeacher(t){
+  const forced=V10_12_TEACHER_DEPT_OVERRIDES.find(r=>r.keys.some(k=>v8AliasMatch(t?.full_name||"",k)));
+  if(forced){
+    const id=v8DeptByNames(forced.dept);
+    if(id) return id;
+  }
+
+  // Supabase is authoritative for all other teachers.
+  if(t?.department_id!=null&&String(t.department_id)!=="") return String(t.department_id);
+
+  // Legacy verified map is only a fallback when the DB department is empty.
   const row=V8_DEPT_MAP.find(r=>r.keys.some(k=>v8AliasMatch(t?.full_name||"",k)));
   if(row){
-    const d=departments.find(d=>row.dept.some(n=>v8Norm(d.name).includes(v8Norm(n))||v8Norm(n).includes(v8Norm(d.name))));
-    if(d) return String(d.id);
+    const id=v8DeptByNames(row.dept);
+    if(id) return id;
   }
-  if(t?.department_id!=null&&String(t.department_id)!=="") return String(t.department_id);
+
   const vr=visits.filter(v=>String(v.teacher_id)===String(t?.id)&&v.department_id!=null&&String(v.department_id)!=="")
     .sort((a,b)=>String(b.visit_date||"").localeCompare(String(a.visit_date||"")))[0];
   return vr?String(vr.department_id):"";
 }
-function v61TeacherDeptIds(t){const id=v8DeptIdForTeacher(t);return id?[id]:[];}
-function v61TeacherDeptName(t,preferredDept=""){
-  const id=v8DeptIdForTeacher(t); if(preferredDept&&String(preferredDept)===String(id))return v5DeptName(id);
-  return id?v5DeptName(id):"غير محدد";
+
+// Fatima Al-Bashir is intentionally cross-department by the SUBJECT OF THE VISIT:
+// Social Studies/Citizenship -> Social Studies & Citizenship
+// Family Education -> Enrichment Subjects
+function v10_12IsFatimaAlBashir(t){
+  return ["فاطمه البشير","فاطمة البشير"].some(k=>v8AliasMatch(t?.full_name||"",k));
 }
-function v61TeachersForDept(dept){const all=activeRows(teachers);return !dept?all:all.filter(t=>String(v8DeptIdForTeacher(t))===String(dept));}
+
+function v10_12DeptIdForVisit(v){
+  const t=teachers.find(t=>String(t.id)===String(v?.teacher_id))||{};
+  if(v10_12IsFatimaAlBashir(t)){
+    const subject=v6CanonicalSubjectName(v6VisitSubject(v)||"");
+    if(subject==="الأسرية"){
+      const id=v8DeptByNames(["المواد الاثرائيه","المواد الإثرائية"]);
+      if(id) return id;
+    }
+    if(subject==="الاجتماعيات" || subject==="المواطنة"){
+      const id=v8DeptByNames(["الاجتماعيات والمواطنه","الاجتماعيات والمواطنة"]);
+      if(id) return id;
+    }
+  }
+  return v8DeptIdForTeacher(t) || (v?.department_id!=null?String(v.department_id):"");
+}
+
+function v61TeacherDeptIds(t){
+  const ids=new Set();
+  const base=v8DeptIdForTeacher(t);
+  if(base) ids.add(String(base));
+
+  // Cross-department teachers can legitimately belong to more than one analysis
+  // according to the subjects actually observed.
+  visits.filter(v=>String(v.teacher_id)===String(t?.id)).forEach(v=>{
+    const id=v10_12DeptIdForVisit(v);
+    if(id) ids.add(String(id));
+  });
+  return [...ids];
+}
+
+function v61TeacherDeptName(t,preferredDept=""){
+  const ids=v61TeacherDeptIds(t);
+  if(preferredDept&&ids.includes(String(preferredDept))) return v5DeptName(preferredDept);
+  return ids.length?v5DeptName(ids[0]):"غير محدد";
+}
+
+function v61TeachersForDept(dept){
+  const all=activeRows(teachers);
+  return !dept?all:all.filter(t=>v61TeacherDeptIds(t).includes(String(dept)));
+}
 
 function v8VisitSubject(v){const s=v6VisitSubject(v);return s&&s!=="غير محدد"?s:"";}
 function v8Compat(a,b){
@@ -12546,7 +12679,7 @@ function v4AcceptedVisits(rows,source=v4AnalysisSource()){return v8ActualVisits(
 
 function v8MonthValue(id){return $(id)?.value??"";}
 function v8Scope(month,dept){
-  return visits.filter(v=>(!month||monthKey(v.visit_date)===month)&&(!dept||String(v8DeptIdForTeacher(teachers.find(t=>String(t.id)===String(v.teacher_id))||{}))===String(dept)));
+  return visits.filter(v=>(!month||monthKey(v.visit_date)===month)&&(!dept||String(v10_12DeptIdForVisit(v))===String(dept)));
 }
 function v7ScopeRows(month,dept){return v8Scope(month,dept);}
 function v5RowsForScope(month,dept){return v8Scope(month,dept);}
@@ -12560,7 +12693,7 @@ function v8InitFilters(){
   const months=availableMonths();
   ["leadershipMonthFilter","followupMonthFilter","dept360MonthFilter","subjectCoverageMonth","teacher360Month","matrixMonth","nextVisitsMonth","decisionMonth","qualityMonth"].forEach(id=>v8Fill(id,months,"كل الأشهر",x=>x,x=>v5MonthLabel(x)));
   ["leadershipDeptFilter","followupDeptFilter","subjectCoverageDept","matrixDept","nextVisitsDept","decisionDept"].forEach(id=>v8Fill(id,activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name));
-  v8Fill("dept360Filter",activeRows(departments),"اختاري القسم",x=>x.id,x=>x.name);
+  v8Fill("dept360Filter",activeRows(departments),"كل الأقسام",x=>x.id,x=>x.name);
   v8Fill("leadershipObserverFilter",v5LeadershipProfiles(),"اختاري عضو القيادة",x=>String(x.id??x.user_id??x.email),x=>`${x.full_name||x.email} — ${leadershipLevel(x)}`);
   v8Fill("teacher360Filter",activeRows(teachers),"اختاري المعلمة",x=>x.id,x=>x.full_name);
 }
@@ -12942,6 +13075,8 @@ function v14TeacherMonthly(raw, teacherId){
   return v14MonthsInRows(raw).map(m=>{
     const mr=(raw||[]).filter(v=>monthKey(v.visit_date)===m && String(v.teacher_id)===String(teacherId));
     const av=v7ActualVisits(mr,{source:"official"});
+    // v5TeacherDiagnosis now reads the teacher's cumulative history up to this month,
+    // so a new month never becomes a new "initial reading".
     const d=v5TeacherDiagnosis(mr,teacherId);
     return {month:m,count:av.length,diag:d};
   }).filter(x=>x.count>0);
@@ -12972,15 +13107,373 @@ renderFollowupCenter = function(){
   <div class="analysis-note">${longitudinal?"كل الأشهر = نطاق تراكمي حقيقي، مع فصل نتيجة كل شهر حتى لا تختلط حالة سبتمبر بأكتوبر.":"النتيجة تخص الشهر المحدد فقط."} الزيارة المشتركة تُحسب مرة واحدة ويظهر جميع المقيمين.</div></article>`;
 };
 
+// V10.16 — LONGITUDINAL PERFORMANCE TREND ENGINE
+// Separates "performance direction" from intervention decisions.
+// Levels: 1 partial < 2 fully meets < 3 exceeds < 4 far exceeds.
+function v16OverallLevel(v){
+  const n=num(v?.overall_rating);
+  return [1,2,3,4].includes(n)?n:0;
+}
+function v16TrendForTeacher(rows,teacherId){
+  const scope=(rows||[]).filter(v=>String(v.teacher_id)===String(teacherId));
+  if(!scope.length) return {key:"unvisited",label:"لم تتم الزيارة",reason:"لا توجد زيارة معتمدة في النطاق",decision:"جدولة زيارة"};
+
+  const cutoff=scope.map(v=>String(v.visit_date||"").slice(0,10)).filter(Boolean).sort().slice(-1)[0]||"";
+  const deptIds=[...new Set(scope.map(v=>v10_12DeptIdForVisit(v)).filter(Boolean).map(String))];
+
+  const history=visits.filter(v=>{
+    if(String(v.teacher_id)!==String(teacherId))return false;
+    const d=String(v.visit_date||"").slice(0,10);
+    if(cutoff&&d>cutoff)return false;
+    if(deptIds.length&&!deptIds.includes(String(v10_12DeptIdForVisit(v))))return false;
+    return true;
+  });
+
+  const actual=v7ActualVisits(history,{source:"official"})
+    .slice().sort((a,b)=>String(a.visit_date||"").localeCompare(String(b.visit_date||"")));
+  const seq=actual.map(v=>v16OverallLevel(v)).filter(Boolean);
+
+  if(!seq.length) return {key:"unvisited",label:"لم تتم الزيارة",reason:"لا توجد أحكام عامة معتمدة في النطاق",decision:"جدولة زيارة"};
+  if(seq.length===1) return {key:"initial",label:"قراءة أولية",reason:`الزيارة الأولى: ${ratingLabel(seq[0])}`,decision:"استكمال الرصد",seq};
+
+  const first=seq[0], last=seq[seq.length-1], prev=seq[seq.length-2];
+  const diffs=seq.slice(1).map((x,i)=>x-seq[i]);
+  const allUp=diffs.every(d=>d>=0)&&diffs.some(d=>d>0);
+  const allDown=diffs.every(d=>d<=0)&&diffs.some(d=>d<0);
+  const allSame=diffs.every(d=>d===0);
+  const hadDown=diffs.some(d=>d<0), hadUp=diffs.some(d=>d>0);
+  const partialCount=seq.filter(x=>x===1).length;
+  const lastTwoPartial=seq.length>=2&&seq.at(-1)===1&&seq.at(-2)===1;
+
+  if(allUp)
+    return {key:"improving",label:"تحسن مستمر",reason:`مسار تصاعدي من ${ratingLabel(first)} إلى ${ratingLabel(last)}`,decision:"استمرار الممارسات الفاعلة",seq};
+
+  if(allSame){
+    if(last===1) return {key:"persistent_need",label:"استمرار حاجة للمتابعة",reason:"استمرار الأداء عند مستوى يفي بالتوقعات جزئيًا عبر الزيارات",decision:"دعم موجه + إعادة رصد",seq};
+    return {key:"positive_stable",label:"استقرار إيجابي",reason:`استقرار الأداء عند مستوى ${ratingLabel(last)}`,decision:"استمرار الرصد",seq};
+  }
+
+  if(allDown){
+    if(last===1) return {key:"declining_priority",label:"تراجع مستمر — أولوية متابعة",reason:`مسار تنازلي انتهى عند ${ratingLabel(last)}`,decision:"دعم موجه + إعادة رصد قريبة",seq};
+    return {key:"declining",label:"تراجع مستمر",reason:`مسار تنازلي من ${ratingLabel(first)} إلى ${ratingLabel(last)}`,decision:"متابعة أسباب التراجع",seq};
+  }
+
+  // Recovery after an earlier decline: latest move is upward.
+  if(last>prev && hadDown){
+    if(last>=first) return {key:"recovered",label:"استعادة مستوى الأداء",reason:`حدث تراجع سابق ثم عاد الأداء إلى ${ratingLabel(last)}`,decision:"استمرار الرصد للتحقق من ثبات التحسن",seq};
+    return {key:"recent_improvement",label:"تحسن حديث بعد تراجع",reason:`آخر انتقال تحسن من ${ratingLabel(prev)} إلى ${ratingLabel(last)}`,decision:"متابعة تثبيت التحسن",seq};
+  }
+
+  // A latest decline after previous improvement/recovery.
+  if(last<prev){
+    if(lastTwoPartial) return {key:"declining_priority",label:"تراجع مستمر — أولوية متابعة",reason:"آخر زيارتين عند مستوى يفي بالتوقعات جزئيًا",decision:"دعم موجه + إعادة رصد قريبة",seq};
+    if(last===1) return {key:"recent_decline",label:"تراجع حديث — يحتاج متابعة",reason:`انخفضت آخر زيارة من ${ratingLabel(prev)} إلى ${ratingLabel(last)}`,decision:"متابعة قريبة للتحقق",seq};
+    return {key:"recent_decline",label:"تراجع حديث",reason:`انخفضت آخر زيارة من ${ratingLabel(prev)} إلى ${ratingLabel(last)}`,decision:"متابعة أسباب التراجع",seq};
+  }
+
+  // Mixed direction with the latest level unchanged.
+  if(hadUp&&hadDown){
+    if(last===1 || partialCount>=2) return {key:"fluctuating_need",label:"تذبذب في الأداء — يحتاج متابعة",reason:`تذبذب الأداء عبر الزيارات وانتهى عند ${ratingLabel(last)}`,decision:"متابعة قريبة لتثبيت الأداء",seq};
+    return {key:"fluctuating",label:"تذبذب في الأداء",reason:`تغير الأداء صعودًا وهبوطًا وانتهى عند ${ratingLabel(last)}`,decision:"استمرار الرصد",seq};
+  }
+
+  if(last>first) return {key:"improving",label:"تحسن عام",reason:`المستوى الحالي أعلى من بداية الرصد: ${ratingLabel(first)} ← ${ratingLabel(last)}`,decision:"استمرار الممارسات الفاعلة",seq};
+  if(last<first) return {key:"declining",label:"تراجع عام",reason:`المستوى الحالي أقل من بداية الرصد: ${ratingLabel(first)} ← ${ratingLabel(last)}`,decision:"متابعة أسباب التراجع",seq};
+
+  return {key:"positive_stable",label:"استقرار في المستوى العام",reason:`بدأ وانتهى المسار عند ${ratingLabel(last)} مع تغيرات بينية`,decision:"استمرار الرصد",seq};
+}
+function v16TrendBadge(x){
+  const cls=["improving","recovered","recent_improvement","positive_stable"].includes(x.key)?"good":
+            ["declining_priority","persistent_need","recent_decline","fluctuating_need"].includes(x.key)?"warn":"";
+  return `<span class="status-badge ${cls}">${esc(x.label)}</span>`;
+}
+
+// V10.18 — CRITERIA EVOLUTION BY ACTUAL VISIT
+// Presentation-only layer: compares partial criteria visit-to-visit.
+// It does not change ratings, diagnoses, visit merging, or Supabase data.
+function v18PartialCriteriaForActualVisit(v){
+  const members=(v?._members&&v._members.length?v._members:[v]).filter(Boolean);
+  const set=new Set();
+  members.forEach(m=>{
+    v5CriteriaForVisit(m.id).forEach(r=>{
+      if(num(r.rating)===1) set.add(String(r.criterion_no));
+    });
+  });
+  return [...set].sort((a,b)=>num(a)-num(b));
+}
+function v18CriteriaList(xs){
+  return xs&&xs.length?`م${xs.join("، م")}`:"—";
+}
+function v18CriteriaEvolution(raw,teacherId){
+  const scope=(raw||[]).filter(v=>String(v.teacher_id)===String(teacherId));
+  if(!scope.length) return "—";
+
+  const cutoff=scope.map(v=>String(v.visit_date||"").slice(0,10)).filter(Boolean).sort().slice(-1)[0]||"";
+  const deptIds=[...new Set(scope.map(v=>v10_12DeptIdForVisit(v)).filter(Boolean).map(String))];
+
+  const history=visits.filter(v=>{
+    if(String(v.teacher_id)!==String(teacherId)) return false;
+    const d=String(v.visit_date||"").slice(0,10);
+    if(cutoff&&d>cutoff) return false;
+    if(deptIds.length&&!deptIds.includes(String(v10_12DeptIdForVisit(v)))) return false;
+    return true;
+  });
+
+  const actual=v7ActualVisits(history,{source:"official"})
+    .slice()
+    .sort((a,b)=>String(a.visit_date||"").localeCompare(String(b.visit_date||"")));
+
+  if(!actual.length) return "—";
+
+  let prev=[];
+  return actual.map((v,i)=>{
+    const cur=v18PartialCriteriaForActualVisit(v);
+    const prevSet=new Set(prev), curSet=new Set(cur);
+    const improved=prev.filter(c=>!curSet.has(c));
+    const persistent=cur.filter(c=>prevSet.has(c));
+    const newOnes=cur.filter(c=>!prevSet.has(c));
+
+    let changes="";
+    if(i===0){
+      changes=cur.length
+        ? `<div style="margin-top:.25rem"><span style="font-weight:700">بداية الرصد:</span> ${esc(v18CriteriaList(cur))}</div>`
+        : `<div style="margin-top:.25rem"><span style="font-weight:700">بداية الرصد:</span> لا توجد معايير جزئية</div>`;
+    }else{
+      const parts=[];
+      if(improved.length) parts.push(`<span style="display:inline-block;margin:.12rem .18rem;padding:.18rem .42rem;border-radius:999px;background:#e3f3e9"><strong>تحسن:</strong> ${esc(v18CriteriaList(improved))}</span>`);
+      if(persistent.length) parts.push(`<span style="display:inline-block;margin:.12rem .18rem;padding:.18rem .42rem;border-radius:999px;background:#f8e3e1"><strong>مستمر:</strong> ${esc(v18CriteriaList(persistent))}</span>`);
+      if(newOnes.length) parts.push(`<span style="display:inline-block;margin:.12rem .18rem;padding:.18rem .42rem;border-radius:999px;background:#fff0d9"><strong>ظهر حديثًا:</strong> ${esc(v18CriteriaList(newOnes))}</span>`);
+      if(!parts.length) parts.push(`<span style="display:inline-block;margin:.12rem .18rem;padding:.18rem .42rem;border-radius:999px;background:#eef2f4">لا تغيير في المعايير الجزئية</span>`);
+      changes=`<div style="margin-top:.25rem">${parts.join(" ")}</div>`;
+    }
+
+    const block=`<div style="margin-bottom:.55rem;padding-bottom:.45rem;border-bottom:1px solid #edf1f3">
+      <strong>زيارة ${i+1} — ${esc(formatDate(v.visit_date))}</strong>
+      <div><small>الجزئي في الزيارة:</small> ${esc(v18CriteriaList(cur))}</div>
+      ${changes}
+    </div>`;
+    prev=cur;
+    return block;
+  }).join("");
+}
+
+// V10.19 — DEPARTMENT DOMINANT PERFORMANCE PATTERN
+// Uses the same criterion-rating distribution idea as the school-wide reading.
+// Only shown for a specific department, not for "all departments".
+function v19DepartmentPattern(actualVisits){
+  const counts={1:0,2:0,3:0,4:0};
+  (actualVisits||[]).forEach(v=>{
+    const members=(v?._members&&v._members.length?v._members:[v]).filter(Boolean);
+    const seen=new Set();
+    members.forEach(m=>v5CriteriaForVisit(m.id).forEach(r=>{
+      const c=String(r.criterion_no);
+      if(seen.has(c)) return;
+      const rating=num(r.rating);
+      if([1,2,3,4].includes(rating)){
+        counts[rating]++;
+        seen.add(c);
+      }
+    }));
+  });
+  const total=counts[1]+counts[2]+counts[3]+counts[4];
+  if(!total) return {total:0,dominant:0,dominantPct:0,fullyOrAbovePct:0,label:"لا توجد بيانات كافية"};
+  const dominant=[1,2,3,4].sort((a,b)=>counts[b]-counts[a]||b-a)[0];
+  return {
+    total,
+    dominant,
+    dominantPct:pct(counts[dominant],total),
+    fullyOrAbovePct:pct(counts[2]+counts[3]+counts[4],total),
+    label:ratingLabel(dominant)
+  };
+}
+
+// V10.20 — ALL DEPARTMENTS PERFORMANCE SUMMARY
+// Uses v19DepartmentPattern for every department, so the summary and each
+// department detail always use the same calculation.
+function v20AllDepartmentsSummary(month){
+  const cards=activeRows(departments).map(d=>{
+    const deptId=String(d.id);
+    const rows=v7ScopeRows(month,deptId);
+    const actual=v7ActualVisits(rows,{source:"official"});
+    const teachers=v61TeachersForDept(deptId);
+    const visited=new Set(actual.map(v=>String(v.teacher_id)));
+    const p=v19DepartmentPattern(actual);
+    return {d,actual,teachers,visited,p};
+  }).filter(x=>x.actual.length||x.teachers.length);
+
+  if(!cards.length) return "";
+
+  return `<section style="margin:1rem 0 1.4rem">
+    <h4 style="margin-bottom:.75rem">ملخص أنماط أداء الأقسام</h4>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.85rem">
+      ${cards.map(({d,actual,teachers,visited,p})=>`<div style="padding:1rem 1.05rem;border:1px solid #dce7eb;border-radius:16px;background:#f8fbfc">
+        <strong style="display:block;font-size:1.02rem;margin-bottom:.55rem">${esc(d.name)}</strong>
+        <div style="margin:.22rem 0"><small>النمط الغالب</small><br><b>${esc(p.label)}</b> ${p.total?`<span>— ${p.dominantPct}%</span>`:""}</div>
+        <div style="margin:.35rem 0"><small>يفي بالتوقعات تمامًا فأعلى</small><br><b style="font-size:1.2rem">${p.total?p.fullyOrAbovePct:0}%</b></div>
+        <div style="margin-top:.55rem;padding-top:.45rem;border-top:1px solid #e5ecef"><small>المعلمات: ${teachers.length} • تمت زيارتهن: ${visited.size} • الزيارات الفعلية: ${actual.length}</small></div>
+      </div>`).join("")}
+    </div>
+  </section>`;
+}
+
+// V10.14 — Department 360 presentation layer only.
+// Adds per-visit overall judgment and an "all departments" view without
+// changing visit merging, diagnosis rules, criteria scoring, or Supabase data.
+function v15TeacherDeptDisplay(t,preferredDept=""){
+  if(preferredDept) return v5DeptName(preferredDept);
+  const ids=v61TeacherDeptIds(t);
+  const names=[...new Set(ids.map(id=>v5DeptName(id)).filter(Boolean))];
+  return names.join(" / ") || "غير محدد";
+}
+
+function v15MonthlyVisitsAndJudgment(raw,teacherId){
+  const months=v14MonthsInRows((raw||[]).filter(v=>String(v.teacher_id)===String(teacherId)));
+  if(!months.length) return "—";
+
+  return months.map(m=>{
+    const mr=(raw||[]).filter(v=>monthKey(v.visit_date)===m && String(v.teacher_id)===String(teacherId));
+    const av=v7ActualVisits(mr,{source:"official"})
+      .slice()
+      .sort((a,b)=>String(a.visit_date||"").localeCompare(String(b.visit_date||"")));
+    if(!av.length) return "";
+
+    const d=v5TeacherDiagnosis(mr,teacherId);
+    const visitsHtml=av.map((v,i)=>{
+      const judgment=ratingLabel(v.overall_rating)||"غير محدد";
+      const subject=v7ActualSubject(v)||"غير محدد";
+      return `<div style="margin:.2rem 0"><strong>زيارة ${i+1}:</strong> ${esc(formatDate(v.visit_date))} • ${esc(subject)} • <strong>${esc(judgment)}</strong></div>`;
+    }).join("");
+
+    return `<div style="margin-bottom:.45rem"><strong>${esc(v5MonthLabel(m))}</strong>${visitsHtml}<div><small>حالة المتابعة حتى هذا التاريخ:</small> ${v5Badge(d)}</div></div>`;
+  }).filter(Boolean).join("");
+}
+
 renderDepartment360 = function(){
   v7EnsureFilterOptions(); const out=$("department360Output"); if(!out)return;
   const dept=$("dept360Filter")?.value||"", month=v14SelectedMonth("dept360MonthFilter");
-  if(!dept){out.innerHTML='<article class="panel"><div class="empty-state">اختاري القسم لعرض تحليل 360°.</div></article>';return;}
-  const raw=v7ScopeRows(month,dept), actual=v7ActualVisits(raw,{source:"official"}), ts=v61TeachersForDept(dept), visited=new Set(actual.map(v=>String(v.teacher_id))), longitudinal=!month;
-  const diag=ts.map(t=>({t,d:v5TeacherDiagnosis(raw,t.id),n:actual.filter(v=>String(v.teacher_id)===String(t.id)).length,c:v6TeacherSubjectCoverage(t,raw)}));
-  const stats={}; actual.forEach(v=>v5CriteriaForVisit(v.id).forEach(r=>{const c=String(r.criterion_no);(stats[c]||={total:0,partial:0});stats[c].total++;if(num(r.rating)===1)stats[c].partial++;}));
-  const priorities=Object.entries(stats).sort((a,b)=>pct(b[1].partial,b[1].total)-pct(a[1].partial,a[1].total)).slice(0,5);
-  out.innerHTML=`<article class="panel v5-report"><div class="v5-report-head"><div><h3>${esc(v5DeptName(dept))} — تحليل 360°</h3><p>${esc(v5MonthLabel(month))}</p></div><div class="v5-kpis"><b>${ts.length}<small>معلمات القسم</small></b><b>${visited.size}<small>تمت زيارتهن</small></b><b>${actual.length}<small>زيارات فعلية معتمدة</small></b><b>${pct(visited.size,ts.length)}%<small>تغطية القسم</small></b></div></div><h4>المعلمات وقراءة المتابعة</h4><div class="table-wrap"><table><thead><tr><th>المعلمة</th><th>${longitudinal?"إجمالي الزيارات":"زيارات فعلية"}</th>${longitudinal?"<th>الزيارات والحالة حسب الشهر</th><th>التطور</th>":""}<th>الحالة</th><th>تغطية المادة</th><th>المعايير الجزئية</th><th>القراءة</th></tr></thead><tbody>${diag.map(({t,d,n,c})=>`<tr><td>${esc(t.full_name)}</td><td>${n}</td>${longitudinal?`<td>${v14MonthlyCell(raw,t.id)}</td><td>${esc(v14Trend(raw,t.id))}</td>`:""}<td>${v5Badge(d)}</td><td>${v6CoverageBadge(c)}</td><td>${d.partial.length?`م${d.partial.join("، م")}`:"—"}</td><td>${esc(d.reason)}</td></tr>`).join("")||`<tr><td colspan="${longitudinal?8:6}">لا توجد معلمات مرتبطة بالقسم.</td></tr>`}</tbody></table></div><h4>أعلى أولويات المعايير داخل القسم</h4><div class="v5-priority-grid">${priorities.map(([c,x])=>`<div><strong>م${c}</strong><b>${pct(x.partial,x.total)}%</b><small>يفي جزئيًا • ${x.partial}/${x.total} رصدًا</small></div>`).join("")||"لا توجد بيانات معايير كافية"}</div><div class="analysis-note">${longitudinal?"تم جمع كل الأشهر مع إظهار حالة كل شهر منفصلة لقراءة التحسن أو الاستمرار.":"التحليل خاص بالشهر المحدد."}</div></article>`;
+  const raw=v7ScopeRows(month,dept),
+        actual=v7ActualVisits(raw,{source:"official"}),
+        ts=v61TeachersForDept(dept),
+        visited=new Set(actual.map(v=>String(v.teacher_id))),
+        longitudinal=!month,
+        allDepartments=!dept;
+
+  let diag=ts.map(t=>({
+    t,
+    d:v5TeacherDiagnosis(raw,t.id),
+    n:actual.filter(v=>String(v.teacher_id)===String(t.id)).length,
+    c:v6TeacherSubjectCoverage(t,raw)
+  }));
+
+  // V10.15 — visual grouping in "all departments" only.
+  // Keep the platform's department order, then sort teachers alphabetically inside each department.
+  if(allDepartments){
+    const deptOrder=new Map(activeRows(departments).map((d,i)=>[String(d.id),i]));
+    diag.sort((a,b)=>{
+      const aIds=v61TeacherDeptIds(a.t), bIds=v61TeacherDeptIds(b.t);
+      const aDept=aIds.length?String(aIds[0]):"", bDept=bIds.length?String(bIds[0]):"";
+      const ao=deptOrder.has(aDept)?deptOrder.get(aDept):9999;
+      const bo=deptOrder.has(bDept)?deptOrder.get(bDept):9999;
+      if(ao!==bo) return ao-bo;
+      return String(a.t.full_name||"").localeCompare(String(b.t.full_name||""),"ar");
+    });
+  }
+
+  const stats={};
+  actual.forEach(v=>v5CriteriaForVisit(v.id).forEach(r=>{
+    const c=String(r.criterion_no);
+    (stats[c]||={total:0,partial:0});
+    stats[c].total++;
+    if(num(r.rating)===1)stats[c].partial++;
+  }));
+  const priorities=Object.entries(stats)
+    .sort((a,b)=>pct(b[1].partial,b[1].total)-pct(a[1].partial,a[1].total))
+    .slice(0,5);
+
+  const title=allDepartments?"كل الأقسام — تحليل 360°":`${v5DeptName(dept)} — تحليل 360°`;
+  const teacherLabel=allDepartments?"معلمات المدرسة":"معلمات القسم";
+  const coverageLabel=allDepartments?"تغطية المعلمات":"تغطية القسم";
+  const priorityTitle=allDepartments?"أعلى أولويات المعايير على مستوى جميع الأقسام":"أعلى أولويات المعايير داخل القسم";
+  const deptPattern=allDepartments?null:v19DepartmentPattern(actual);
+
+  out.innerHTML=`<article class="panel v5-report">
+    <div class="v5-report-head">
+      <div><h3>${esc(title)}</h3><p>${esc(v5MonthLabel(month))}</p></div>
+      <div class="v5-kpis">
+        <b>${ts.length}<small>${teacherLabel}</small></b>
+        <b>${visited.size}<small>تمت زيارتهن</small></b>
+        <b>${actual.length}<small>زيارات فعلية معتمدة</small></b>
+        <b>${pct(visited.size,ts.length)}%<small>${coverageLabel}</small></b>
+      </div>
+    </div>
+
+    ${allDepartments?v20AllDepartmentsSummary(month):""}
+
+    ${!allDepartments&&deptPattern?`<div style="display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,.7fr);gap:1rem;margin:1rem 0 1.25rem">
+      <div style="padding:1rem 1.15rem;border:1px solid #dce7eb;border-radius:16px;background:#f7fafb">
+        <small style="display:block;margin-bottom:.35rem">النمط الغالب لأداء القسم</small>
+        <strong style="display:block;font-size:1.25rem">${esc(deptPattern.label)}</strong>
+        <span>${deptPattern.dominantPct}% من إجمالي الرصد</span>
+      </div>
+      <div style="padding:1rem 1.15rem;border:1px solid #dce7eb;border-radius:16px;background:#f7fafb">
+        <small style="display:block;margin-bottom:.35rem">يفي بالتوقعات تمامًا فأعلى</small>
+        <strong style="display:block;font-size:1.45rem">${deptPattern.fullyOrAbovePct}%</strong>
+        <span>من إجمالي الرصد داخل القسم</span>
+      </div>
+    </div>`:""}
+
+    <h4>المعلمات وقراءة المتابعة</h4>
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>المعلمة</th>
+        ${allDepartments?"<th>القسم</th>":""}
+        <th>${longitudinal?"إجمالي الزيارات":"زيارات فعلية"}</th>
+        ${longitudinal?"<th>الزيارات حسب الشهر والحكم العام</th><th>مسار الأداء</th>":"<th>الحكم العام للزيارة/الزيارات</th>"}
+        <th>متابعة المعايير</th>
+        <th>تغطية المادة</th>
+        <th>المعايير الجزئية</th>
+        <th>القراءة</th>
+      </tr></thead>
+      <tbody>${(()=>{
+        let lastDept="";
+        return diag.map(({t,d,n,c})=>{
+          const teacherVisits=actual.filter(v=>String(v.teacher_id)===String(t.id))
+            .slice().sort((a,b)=>String(a.visit_date||"").localeCompare(String(b.visit_date||"")));
+          const judgments=teacherVisits.length
+            ? teacherVisits.map((v,i)=>`<div><strong>زيارة ${i+1}:</strong> ${esc(formatDate(v.visit_date))} • ${esc(v7ActualSubject(v)||"غير محدد")} • <strong>${esc(ratingLabel(v.overall_rating)||"غير محدد")}</strong></div>`).join("")
+            : "—";
+
+          const deptName=v15TeacherDeptDisplay(t);
+          let sectionRow="";
+          if(allDepartments && deptName!==lastDept){
+            lastDept=deptName;
+            sectionRow=`<tr class="v15-dept-section"><td colspan="${longitudinal?9:8}" style="font-weight:800;font-size:1.02rem;text-align:right;background:#eef5f7;padding:.8rem 1rem;border-top:2px solid #d4e3e8">${esc(deptName)}</td></tr>`;
+          }
+
+          return `${sectionRow}<tr>
+            <td>${esc(t.full_name)}</td>
+            ${allDepartments?`<td>${esc(deptName)}</td>`:""}
+            <td>${n}</td>
+            ${longitudinal?`<td>${v15MonthlyVisitsAndJudgment(raw,t.id)}</td><td>${(()=>{const tr=v16TrendForTeacher(raw,t.id);return `${v16TrendBadge(tr)}<div style="margin-top:.35rem"><small>${esc(tr.reason)}</small></div>`;})()}</td>`:`<td>${judgments}</td>`}
+            <td>${v5Badge(d)}</td>
+            <td>${v6CoverageBadge(c)}</td>
+            <td>${v18CriteriaEvolution(raw,t.id)}</td>
+            <td>${esc(d.reason)}</td>
+          </tr>`;
+        }).join("");
+      })()||`<tr><td colspan="${allDepartments?(longitudinal?9:8):(longitudinal?8:7)}">لا توجد معلمات في النطاق المحدد.</td></tr>`}</tbody>
+    </table></div>
+
+    <h4>${priorityTitle}</h4>
+    <div class="v5-priority-grid">${priorities.map(([c,x])=>`<div><strong>م${c}</strong><b>${pct(x.partial,x.total)}%</b><small>يفي جزئيًا • ${x.partial}/${x.total} رصدًا</small></div>`).join("")||"لا توجد بيانات معايير كافية"}</div>
+
+    <div class="analysis-note">
+      ${longitudinal
+        ?"كل شهر هو فترة عرض فقط؛ القراءة الأولية تخص الزيارة الأولى للمعلمة. «مسار الأداء» يقرأ تسلسل الأحكام العامة زمنيًا ويغطي التحسن والاستقرار والتراجع والتذبذب والاستعادة، بينما تبقى «حالة المتابعة» قراءة للمعايير الجزئية ولا تُستخدم وحدها لوصف اتجاه الأداء."
+        :"الحكم العام المعروض هو حكم الزيارة نفسها، بينما «حالة المتابعة» قراءة تراكمية مبنية على سجل المعلمة السابق حتى تاريخ الزيارة."}
+      ${allDepartments?" خيار «كل الأقسام» يجمع المعلمات في شاشة واحدة مع إظهار القسم، دون تغيير طريقة احتساب كل قسم أو دمج الزيارات المشتركة.":""}
+    </div>
+  </article>`;
 };
 
 renderSubjectCoverage = function(){
@@ -13171,7 +13664,7 @@ function atharCriterionMap(v){const m={};atharCriterionRows(v).forEach(x=>m[Stri
 function atharCriterionName(c){const q=(criteria||[]).find(x=>String(x.criterion_no??x.no??x.id)===String(c));return q?.criterion_text||q?.text||q?.name||`المعيار م${c}`;}
 function atharCriterionLabel(c){return `م${c} — ${atharCriterionName(c)}`;}
 function atharMonthEnd(month){if(!month)return null;const [y,m]=month.split('-').map(Number);return new Date(y,m,0,23,59,59,999);}
-function atharRowsThrough(month,dept){const end=atharMonthEnd(month);return visits.filter(v=>(!end||new Date(String(v.visit_date).slice(0,10)+'T12:00:00')<=end)&&(!dept||String(v8DeptIdForTeacher(teachers.find(t=>String(t.id)===String(v.teacher_id))||{}))===String(dept)));}
+function atharRowsThrough(month,dept){const end=atharMonthEnd(month);return visits.filter(v=>(!end||new Date(String(v.visit_date).slice(0,10)+'T12:00:00')<=end)&&(!dept||String(v10_12DeptIdForVisit(v))===String(dept)));}
 function atharTeacherActual(t,rows){return v7ActualVisits((rows||[]).filter(v=>String(v.teacher_id)===String(t.id)),{source:"official"}).sort((a,b)=>String(a.visit_date).localeCompare(String(b.visit_date)));}
 function atharEvidence(t,historyRows,periodRows=[]){
   const av=atharTeacherActual(t,historyRows), pav=atharTeacherActual(t,periodRows), series={};
@@ -13361,7 +13854,7 @@ function v10TeacherProgressBlock(t,journey){
   const trans=transitions.map(x=>`<tr><td>${x.from} ← ${x.to}</td><td>${esc(ratingLabel(x.a.overall_rating))}</td><td>${esc(ratingLabel(x.b.overall_rating))}</td><td>${v10MoveBadge(x.state)}</td></tr>`).join("");
   const needs=criteria.filter(x=>num(x.first._criteria[String(x.c)])===1 || num(x.last._criteria[String(x.c)])===1);
   const crit=needs.map(x=>`<tr><td>م${esc(x.c)}</td><td>${esc(ratingLabel(x.first._criteria[String(x.c)]))}<br><small>زيارة ${x.first._visitNo}</small></td><td>${x.count>1?`${esc(ratingLabel(x.last._criteria[String(x.c)]))}<br><small>زيارة ${x.last._visitNo}</small>`:"لم يُعد قياسه"}</td><td>${v10MoveBadge(x.state)}</td></tr>`).join("");
-  return `<h4>مسار تطور الأداء التراكمي</h4><div class="analysis-note"><strong>قاعدة العد:</strong> للمعلمة زيارة فعلية واحدة فقط في التاريخ نفسه. إذا تكرر الإدخال في اليوم نفسه يُدمج، ويُعتمد تقييم القيادة العليا عند وجوده.</div><div class="table-wrap"><table><thead><tr><th>الترتيب</th><th>التاريخ</th><th>الحكم العام</th><th>المعايير الجزئية</th><th>حالة السجل</th></tr></thead><tbody>${trail}</tbody></table></div><h4>تطور الحكم العام بين الزيارات</h4><div class="table-wrap"><table><thead><tr><th>الانتقال</th><th>من</th><th>إلى</th><th>النتيجة</th></tr></thead><tbody>${trans||'<tr><td colspan="4">تحتاج المعلمة زيارة ثانية لقياس التطور.</td></tr>'}</tbody></table></div><h4>إعادة قياس الاحتياجات والمعايير</h4><div class="table-wrap"><table><thead><tr><th>المعيار</th><th>أول رصد</th><th>آخر إعادة قياس</th><th>الحالة</th></tr></thead><tbody>${crit||'<tr><td colspan="4">لا توجد معايير جزئية تحتاج تتبعًا في الرصد المتاح.</td></tr>'}</tbody></table></div>`;
+  return `<h4>مسار تطور الأداء التراكمي</h4><div class="analysis-note"><strong>قاعدة العد:</strong> للمعلمة زيارة فعلية واحدة فقط في التاريخ نفسه. إذا تكرر الإدخال في اليوم نفسه يُدمج، ويُعتمد تقييم القيادة العليا عند وجوده.</div><div class="table-wrap"><table><thead><tr><th>الترتيب</th><th>التاريخ</th><th>الحكم العام</th><th>تطور المعايير الجزئية</th><th>حالة السجل</th></tr></thead><tbody>${trail}</tbody></table></div><h4>تطور الحكم العام بين الزيارات</h4><div class="table-wrap"><table><thead><tr><th>الانتقال</th><th>من</th><th>إلى</th><th>النتيجة</th></tr></thead><tbody>${trans||'<tr><td colspan="4">تحتاج المعلمة زيارة ثانية لقياس التطور.</td></tr>'}</tbody></table></div><h4>إعادة قياس الاحتياجات والمعايير</h4><div class="table-wrap"><table><thead><tr><th>المعيار</th><th>أول رصد</th><th>آخر إعادة قياس</th><th>الحالة</th></tr></thead><tbody>${crit||'<tr><td colspan="4">لا توجد معايير جزئية تحتاج تتبعًا في الرصد المتاح.</td></tr>'}</tbody></table></div>`;
 }
 
 // Teacher 360 is cumulative by design; month is only a display cut-off, never a reset.
