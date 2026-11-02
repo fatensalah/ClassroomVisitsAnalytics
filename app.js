@@ -702,13 +702,35 @@ function updateSubjectSelect(
     department => String(department.id) === String(departmentId)
   );
 
-  // Special-education departments teach across the school curriculum, so all
-  // active subjects must be available. Other departments only see their own
-  // configured subjects from public.subjects.
+  // أقسام التربية الخاصة تدرّس المواد الأساسية الأربع فقط.
+  // نختار سجلاً واحدًا فقط لكل مادة حتى لا تظهر مسميات مكررة مثل
+  // «العربي / اللغة العربية» أو «الإنجليزي / اللغة الإنجليزية».
   const allActiveSubjects = activeRows(subjects);
+
+  const specialSubjectGroups = [
+    ["اللغه العربيه", "العربي"],
+    ["الرياضيات"],
+    ["العلوم"],
+    ["اللغه الانجليزيه", "الانجليزي"]
+  ];
+
+  const specialRows = specialSubjectGroups
+    .map(aliases => {
+      const normalizedAliases = aliases.map(v6Norm);
+      const matches = allActiveSubjects.filter(subject =>
+        normalizedAliases.includes(v6Norm(subject?.name || ""))
+      );
+
+      // عند وجود أكثر من مسمى لنفس المادة نفضّل المسمى الأطول/الرسمي.
+      return matches.sort((a, b) =>
+        String(b?.name || "").length - String(a?.name || "").length
+      )[0] || null;
+    })
+    .filter(Boolean);
+
   const rows = uniqueSubjectsByName(
     v6IsSpecialDeptName(selectedDepartment?.name || "")
-      ? allActiveSubjects
+      ? specialRows
       : allActiveSubjects.filter(
           subject => String(subject.department_id) === String(departmentId)
         )
@@ -1383,9 +1405,17 @@ function updateConsistencyHint() {
 function dataSlice(
   rows
 ) {
+  // V10.14 — one analytical source of truth:
+  // same teacher + same date = one official classroom visit.
+  // This keeps criteria, strengths, gaps, readings and charts aligned
+  // with the platform's official visit count.
+  const analyticalRows = (typeof v7ActualVisits === "function")
+    ? v7ActualVisits(rows || [], { source: "official" })
+    : (rows || []);
+
   const ids =
     new Set(
-      rows.map(
+      analyticalRows.map(
         visit =>
           String(
             visit.id
@@ -2133,6 +2163,8 @@ function strongestCriteria(
         a,
         b
       ) =>
+        b.meetsRate -
+        a.meetsRate ||
         b.exceedsRate -
         a.exceedsRate
     )
@@ -2142,33 +2174,40 @@ function strongestCriteria(
     );
 }
 
-function supportSummary(
-  rows = supports
-) {
+function supportEffectiveStatus(item) {
+  const followups = supportFollowups
+    .filter(f => String(f.support_action_id) === String(item.id))
+    .slice()
+    .sort((a,b) => String(a.created_at || a.id || "").localeCompare(String(b.created_at || b.id || "")));
+  const latest = followups[followups.length - 1];
+  if (latest) return num(latest.after_rating) >= 2 ? "مغلق" : "تحت المتابعة";
+  return item.status || "مفتوح";
+}
+
+function canonicalSupportRows(rows = supports) {
+  const byKey = new Map();
+  const sourceDate = item => {
+    const source = visits.find(v => String(v.id) === String(item.source_visit_id));
+    return String(source?.visit_date || item.updated_at || item.created_at || "");
+  };
+
+  rows.forEach(item => {
+    const key = `${item.teacher_id}|${item.criterion_no}`;
+    const current = byKey.get(key);
+    if (!current || sourceDate(item) >= sourceDate(current)) byKey.set(key, item);
+  });
+  return [...byKey.values()].map(item => ({...item, status: supportEffectiveStatus(item)}));
+}
+
+function supportSummary(rows = supports) {
+  // Dashboard/support snapshot uses one current lifecycle state per teacher+criterion.
+  // Historical duplicate support actions remain stored, but are not double-counted here.
+  const current = canonicalSupportRows(rows);
   return {
-    total:
-      rows.length,
-
-    open:
-      rows.filter(
-        item =>
-          item.status ===
-          "مفتوح"
-      ).length,
-
-    follow:
-      rows.filter(
-        item =>
-          item.status ===
-          "تحت المتابعة"
-      ).length,
-
-    closed:
-      rows.filter(
-        item =>
-          item.status ===
-          "مغلق"
-      ).length
+    total: current.length,
+    open: current.filter(item => item.status === "مفتوح").length,
+    follow: current.filter(item => item.status === "تحت المتابعة").length,
+    closed: current.filter(item => item.status === "مغلق").length
   };
 }
 
@@ -2239,48 +2278,23 @@ function nextVisitForSupport(
     return null;
   }
 
-  const laterVisits =
-    visits
-      .filter(
-        visit =>
-          String(
-            visit.teacher_id
-          ) ===
-            String(
-              support.teacher_id
-            ) &&
-          String(
-            visit.id
-          ) !==
-            String(
-              source.id
-            ) &&
-          String(
-            visit.visit_date
-          ) >=
-            String(
-              source.visit_date
-            )
-      )
-      .sort(
-        (
-          a,
-          b
-        ) =>
-          String(
-            a.visit_date
-          )
-            .localeCompare(
-              String(
-                b.visit_date
-              )
-            )
-      );
-
-  return (
-    laterVisits[0] ||
-    null
+  // A support follow-up must be a genuinely later observation.
+  // Same-day joint records are one visit and must never be interpreted as
+  // "change after support".  Use the same official-visit de-duplication
+  // engine used by the follow-up center.
+  const laterVisits = v7ActualVisits(
+    visits.filter(
+      visit =>
+        String(visit.teacher_id) === String(support.teacher_id) &&
+        String(visit.visit_date || "").slice(0, 10) >
+          String(source.visit_date || "").slice(0, 10)
+    ),
+    { source: "official" }
+  ).sort((a, b) =>
+    String(a.visit_date || "").localeCompare(String(b.visit_date || ""))
   );
+
+  return laterVisits[0] || null;
 }
 
 function supportObservedRow(
@@ -2897,100 +2911,38 @@ function distributionCenter(
     ) / 100;
 }
 
-function compareMonthlyCriterion(
-  fromStat,
-  toStat
-) {
-  if (
-    !fromStat?.total ||
-    !toStat?.total
-  ) {
+function criterionMeetsRate(stat) {
+  if (!stat?.total) return null;
+  const pct = stat.percentages || {};
+  return Math.round(((pct[2] || 0) + (pct[3] || 0) + (pct[4] || 0)) * 10) / 10;
+}
+
+function compareMonthlyCriterion(fromStat, toStat) {
+  if (!fromStat?.total || !toStat?.total) {
     return {
       status: "بيانات غير كافية",
       className: "growth-na",
-      detail: "لا تتوافر بيانات كافية للمقارنة بين الشهرين."
+      detail: "لا تتوافر بيانات كافية للمقارنة بين الشهرين.",
+      beforeRate: null, afterRate: null, delta: null
     };
   }
 
-  const fromModes =
-    fromStat.modes || [];
-  const toModes =
-    toStat.modes || [];
+  const beforeRate = criterionMeetsRate(fromStat);
+  const afterRate = criterionMeetsRate(toStat);
+  const delta = Math.round((afterRate - beforeRate) * 10) / 10;
+  const abs = Math.abs(delta);
+  const points = `${abs}% نقطة مئوية`;
 
-  const fromMin = Math.min(
-    ...fromModes
-  );
-  const fromMax = Math.max(
-    ...fromModes
-  );
-  const toMin = Math.min(
-    ...toModes
-  );
-  const toMax = Math.max(
-    ...toModes
-  );
-
-  if (
-    toMin >
-    fromMax
-  ) {
-    return {
-      status: "تحسن",
-      className: "growth-up",
-      detail: `انتقل النمط الغالب من ${modalLevelText(fromStat)} إلى ${modalLevelText(toStat)}.`
-    };
+  if (delta > 0) {
+    return { status: "تحسن", className: "growth-up", beforeRate, afterRate, delta,
+      detail: `ارتفع تحقيق التوقعات فأعلى من ${beforeRate}% إلى ${afterRate}% (+${points}).` };
   }
-
-  if (
-    toMax <
-    fromMin
-  ) {
-    return {
-      status: "تراجع",
-      className: "growth-down",
-      detail: `انتقل النمط الغالب من ${modalLevelText(fromStat)} إلى ${modalLevelText(toStat)}.`
-    };
+  if (delta < 0) {
+    return { status: "تراجع", className: "growth-down", beforeRate, afterRate, delta,
+      detail: `انخفض تحقيق التوقعات فأعلى من ${beforeRate}% إلى ${afterRate}% (-${points}).` };
   }
-
-  const before =
-    distributionCenter(
-      fromStat
-    );
-  const after =
-    distributionCenter(
-      toStat
-    );
-  const change =
-    after !== null &&
-    before !== null
-      ? after - before
-      : 0;
-
-  if (
-    change > 0.001
-  ) {
-    return {
-      status: "تحسن في التوزيع",
-      className: "growth-up",
-      detail: "ظل النمط الغالب ثابتًا أو متعادلًا، مع انتقال نسبي للتقديرات نحو مستويات أعلى."
-    };
-  }
-
-  if (
-    change < -0.001
-  ) {
-    return {
-      status: "تراجع في التوزيع",
-      className: "growth-down",
-      detail: "ظل النمط الغالب ثابتًا أو متعادلًا، مع انتقال نسبي للتقديرات نحو مستويات أدنى."
-    };
-  }
-
-  return {
-    status: "استقرار",
-    className: "growth-flat",
-    detail: "لم يظهر تغير في اتجاه توزيع مستويات الحكم بين الشهرين."
-  };
+  return { status: "استقرار", className: "growth-flat", beforeRate, afterRate, delta: 0,
+    detail: `استقر تحقيق التوقعات فأعلى عند ${afterRate}%.` };
 }
 
 function criterionGrowthStats(
@@ -3147,47 +3099,16 @@ function criteriaReading(
         "استقرار"
     ).length;
 
-  const currentModes =
-    criteria.map(
-      criterion => {
-        const stat =
-          criterionMonthlyDistribution(
-            rows,
-            criterion.id
-          );
-        return {
-          id: num(criterion.id),
-          stat,
-          center:
-            distributionCenter(
-              stat
-            )
-        };
-      }
-    ).filter(
-      item =>
-        item.stat.total > 0
-    );
+  // V10.14 — the narrative uses the same KPI as the heatmap:
+  // achieving expectations or above = levels 2 + 3 + 4.
+  const ranked = stats
+    .filter(item => item.meetsRate !== null && item.meetsRate !== undefined)
+    .sort((a, b) => b.meetsRate - a.meetsRate || a.inappropriateRate - b.inappropriateRate);
 
-  const highest =
-    currentModes.length
-      ? [...currentModes]
-          .sort(
-            (a, b) =>
-              b.center -
-              a.center
-          )[0]
-      : null;
-
-  const lowest =
-    currentModes.length
-      ? [...currentModes]
-          .sort(
-            (a, b) =>
-              a.center -
-              b.center
-          )[0]
-      : null;
+  const highest = ranked.length ? ranked[0] : null;
+  const lowest = ranked.length
+    ? [...ranked].sort((a, b) => a.meetsRate - b.meetsRate || b.inappropriateRate - a.inappropriateRate)[0]
+    : null;
 
   const parts = [];
 
@@ -3196,7 +3117,7 @@ function criteriaReading(
     lowest
   ) {
     parts.push(
-      `${label ? `في ${label}، ` : ""}ظهر أعلى نمط أداء في المعيار م${highest.id} عند ${modalLevelText(highest.stat)}، بينما ظهر أدنى نمط أداء في المعيار م${lowest.id} عند ${modalLevelText(lowest.stat)}.`
+      `${label ? `في ${label}، ` : ""}سجل المعيار م${highest.id} أعلى نسبة في تحقيق التوقعات فأعلى (${highest.meetsRate}%)، بينما سجل المعيار م${lowest.id} أدنى نسبة (${lowest.meetsRate}%).`
     );
   }
 
@@ -3564,7 +3485,7 @@ function criteriaGrowthTableHTML(
   months.forEach(
     (month, index) => {
       headers +=
-        `<th>${esc(monthLabel(month))}<br><small>النمط الغالب</small></th>`;
+        `<th>${esc(monthLabel(month))}<br><small>تحقيق التوقعات فأعلى</small></th>`;
 
       if (
         index <
@@ -3612,7 +3533,7 @@ function criteriaGrowthTableHTML(
 
             cells += `
               <td>
-                ${point?.total ? esc(point.modalText) : "—"}
+                ${point?.total ? `${criterionMeetsRate(point)}%` : "—"}
               </td>`;
 
             if (
@@ -3640,7 +3561,7 @@ function criteriaGrowthTableHTML(
   return `
     ${growthSummaryHTML(growth)}
     <p class="scope-note">
-      يعتمد التطور على المستوى الأكثر تكرارًا ونسبته لكل معيار في كل شهر، وتظهر قراءة مستقلة بين كل شهرين متتاليين. وعند ثبات أو تعادل النمط الغالب تُقرأ حركة التوزيع الكامل للمستويات الأربعة قبل تحديد الاتجاه.
+      يعتمد اتجاه التطور على نفس المؤشر المستخدم في الخريطة الحرارية: نسبة «تحقيق التوقعات فأعلى» (يفي تمامًا + يتجاوز + يتجاوز بكثير). وتُقارن النسبة بين كل شهرين متتاليين ويظهر مقدار التغير بالنقاط المئوية.
     </p>
     <div class="criteria-table-wrap">
       <table class="criteria-growth-table">
@@ -3788,6 +3709,67 @@ function makeChart(
         }
       }
     );
+}
+
+function renderDashboardTrend(rows) {
+  const canvas = $("trendChart");
+  if (!canvas || !window.Chart) return;
+
+  destroyChart("trendChart");
+
+  // V10.14: use the same official de-duplicated visit set used by analytics.
+  const analyticalRows = (typeof v7ActualVisits === "function")
+    ? v7ActualVisits(rows || [], { source: "official" })
+    : (rows || []);
+
+  const monthRows = new Map();
+  analyticalRows.forEach(visit => {
+    const key = monthKey(visit.visit_date);
+    if (!key) return;
+    if (!monthRows.has(key)) monthRows.set(key, []);
+    monthRows.get(key).push(visit);
+  });
+
+  const keys = [...monthRows.keys()].sort();
+  const visitSeries = [];
+  const attainmentSeries = [];
+
+  keys.forEach(key => {
+    const monthVisits = monthRows.get(key) || [];
+    const ids = new Set(monthVisits.map(v => String(v.id)));
+    const monthRatings = ratings.filter(r =>
+      ids.has(String(r.visit_id)) && [1,2,3,4].includes(num(r.rating))
+    );
+    const attained = monthRatings.filter(r => num(r.rating) >= 2).length;
+
+    // V10.13: compare each month with itself: monthly visit volume +
+    // percentage achieving expectations or above. No mixed cumulative logic.
+    visitSeries.push(monthVisits.length);
+    attainmentSeries.push(monthRatings.length
+      ? Math.round(attained / monthRatings.length * 1000) / 10
+      : 0);
+  });
+
+  charts.trendChart = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: keys.map(v5MonthLabel),
+      datasets: [
+        { label: "عدد الزيارات في الشهر", data: visitSeries, yAxisID: "y" },
+        { label: "تحقيق التوقعات فأعلى %", data: attainmentSeries, yAxisID: "y1" }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: { legend: { display: true } },
+      scales: {
+        y: { beginAtZero: true, title: { display: true, text: "عدد الزيارات الشهرية" } },
+        y1: { beginAtZero: true, max: 100, position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "تحقيق التوقعات فأعلى %" } }
+      }
+    }
+  });
 }
 
 function setKpi(
@@ -4012,7 +3994,7 @@ function departmentPerformanceReadingsHTML(rows, options = {}) {
               )
               .join("")}
             <tr>
-              <td><strong>المجموع الكلي</strong></td>
+              <td><strong>إجمالي المرصودات حسب الأقسام</strong></td>
               <td><strong>${totals.stableHigh || "—"}</strong></td>
               <td><strong>${totals.developing || "—"}</strong></td>
               <td><strong>${totals.priority || "—"}</strong></td>
@@ -4022,6 +4004,7 @@ function departmentPerformanceReadingsHTML(rows, options = {}) {
           </tbody>
         </table>
       </div>
+      <p class="scope-note">قد تظهر المعلمة ضمن أكثر من قسم وفق المادة أو التكليف؛ لذلك فهذا الإجمالي يمثل المرصودات حسب الأقسام وليس عدد المعلمات الفريد.</p>
     </div>
   `;
 }
@@ -4042,15 +4025,18 @@ function qualityNormalizeText(value = "") {
     .trim();
 }
 
-function qualitySubjectName(visit) {
-  const subject =
-    subjects.find(
-      item =>
-        String(item.id) ===
-        String(visit?.subject_id)
-    );
+function qualityCanonicalSubjectName(name = "") {
+  const n = qualityNormalizeText(name);
+  if (["العربي","عربي","اللغه العربيه","لغه عربيه"].some(k => n === qualityNormalizeText(k))) return "اللغة العربية";
+  if (["الانجليزي","انجليزي","الانجليزيه","اللغه الانجليزيه","لغه انجليزيه"].some(k => n === qualityNormalizeText(k))) return "اللغة الإنجليزية";
+  if (["الرياضيات","رياضيات"].some(k => n === qualityNormalizeText(k))) return "الرياضيات";
+  if (["العلوم","علوم"].some(k => n === qualityNormalizeText(k))) return "العلوم";
+  return name;
+}
 
-  return subject?.name || "";
+function qualitySubjectName(visit) {
+  const subject = subjects.find(item => String(item.id) === String(visit?.subject_id));
+  return qualityCanonicalSubjectName(subject?.name || "");
 }
 
 function qualityIsBasicSubjectName(name) {
@@ -4307,26 +4293,38 @@ function qualityGrowthValueHTML(
 function qualityFindCriterion(
   keywordGroups
 ) {
-  return criteria.find(
+  // First prefer an exact semantic match across all keyword groups.
+  const exact = criteria.find(
     criterion => {
-      const text =
-        qualityNormalizeText(
-          criterion.criterion_text
-        );
-
+      const text = qualityNormalizeText(criterion.criterion_text);
       return keywordGroups.every(
-        group =>
-          group.some(
-            keyword =>
-              text.includes(
-                qualityNormalizeText(
-                  keyword
-                )
-              )
-          )
+        group => group.some(
+          keyword => text.includes(qualityNormalizeText(keyword))
+        )
       );
     }
-  ) || null;
+  );
+
+  if (exact) return exact;
+
+  // V10.11: criteria wording can vary slightly in Supabase.
+  // Fall back to the criterion matching the largest number of keyword groups
+  // instead of returning “insufficient data” merely because one word changed.
+  const ranked = criteria
+    .map(criterion => {
+      const text = qualityNormalizeText(criterion.criterion_text);
+      const score = keywordGroups.reduce(
+        (sum, group) => sum + (group.some(
+          keyword => text.includes(qualityNormalizeText(keyword))
+        ) ? 1 : 0),
+        0
+      );
+      return { criterion, score };
+    })
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score || num(a.criterion.id) - num(b.criterion.id));
+
+  return ranked[0]?.criterion || null;
 }
 
 function qualityCriterionReading(
@@ -4378,12 +4376,14 @@ function qualityCriterionReading(
         )
     );
 
+  // V10.13 unified performance definition: achieving expectations or above
+  // = meets fully + exceeds + far exceeds (ratings 2, 3, 4).
   const count =
     related.filter(
       rating =>
         num(
           rating.rating
-        ) >= 3
+        ) >= 2
     ).length;
 
   return {
@@ -4668,14 +4668,14 @@ function qualityCardReadingsHTML(
     qualityGrowthReading(
       rows,
       true,
-      [2]
+      [2, 3, 4]
     );
 
   const meetsNonBasic =
     qualityGrowthReading(
       rows,
       false,
-      [2]
+      [2, 3, 4]
     );
 
   const partialBasic =
@@ -4898,7 +4898,7 @@ function qualityCardReadingsHTML(
             <tbody>
               <tr>
                 <td style="${tdStyle};font-weight:700;">
-                  نمو مستوى «يتجاوز التوقعات» فأعلى
+                  نسبة «يتجاوز التوقعات» فأعلى في أحدث شهر
                 </td>
                 <td style="${tdStyle};text-align:center;">
                   ${growthCell(highBasic)}
@@ -4910,7 +4910,7 @@ function qualityCardReadingsHTML(
 
               <tr>
                 <td style="${tdStyle};font-weight:700;">
-                  نمو مستوى «يفي بالتوقعات تمامًا»
+                  نسبة «تحقيق التوقعات فأعلى» في أحدث شهر
                 </td>
                 <td style="${tdStyle};text-align:center;">
                   ${growthCell(meetsBasic)}
@@ -4922,7 +4922,7 @@ function qualityCardReadingsHTML(
 
               <tr>
                 <td style="${tdStyle};font-weight:700;">
-                  مقدار مستوى «يفي بالتوقعات جزئيًا»
+                  الفجوة الحالية «يفي بالتوقعات جزئيًا»
                 </td>
                 <td style="${tdStyle};text-align:center;">
                   ${amountCell(partialBasic)}
@@ -4940,6 +4940,9 @@ function qualityCardReadingsHTML(
         <h4 style="margin:0 0 10px;color:#143f54;">
           ثانيًا: مؤشرات الممارسة الصفية
         </h4>
+        <p style="margin:0 0 10px;color:#6f7f89;font-size:13px;">
+          القراءة = نسبة الأحكام التي حققت التوقعات فأعلى في المعيار المرتبط بالمؤشر (يفي تمامًا + يتجاوز + يتجاوز بكثير)، من إجمالي الأحكام الصالحة لذلك المعيار ضمن الزيارات الحالية.
+        </p>
 
         <div style="overflow-x:auto;">
           <table style="${tableStyle}">
@@ -5148,8 +5151,12 @@ function renderDashboardDepartmentPerformance(rows) {
 }
 
 function renderDashboard() {
-  const rows =
+  const rawRows =
     dashboardFilteredRows();
+
+  // V10.16 — dashboard KPIs, charts and analytics all use the same
+  // official visit engine (same teacher + same date = one visit).
+  const rows = officialAnalyticsRows(rawRows);
 
   const coverage =
     teacherCoverage(
@@ -5219,10 +5226,14 @@ function renderDashboard() {
     `${consistency.rate}%`
   );
 
+  const activeSupportRows = canonicalSupportRows(supports).filter(item => item.status !== "مغلق");
+  const activeSupportTeachers = new Set(activeSupportRows.map(item => String(item.teacher_id))).size;
+  const activeSupportCriteria = new Set(activeSupportRows.map(item => `${item.teacher_id}|${item.criterion_no}`)).size;
+
   setKpi(
     "kpiSupport",
-    support.open +
-    support.follow
+    activeSupportTeachers,
+    `${activeSupportCriteria} معيارًا نشطًا`
   );
 
   setKpi(
@@ -5332,79 +5343,49 @@ function renderDashboard() {
     "المعلمات"
   );
 
+  renderDashboardTrend(rows);
+
   if (
     $("criteriaHeatmap")
   ) {
     $("criteriaHeatmap").innerHTML =
-      criterionStats(
-        rows
-      )
-        .map(
-          item => {
-            const modal =
-              criterionMonthlyDistribution(
-                rows,
-                item.id
-              );
+      criterionStats(rows)
+        .map(item => {
+          // V10.11: compare all 18 criteria using one meaningful indicator:
+          // “meets expectations or above” = levels 2 + 3 + 4.
+          const rate = item.meetsRate ?? null;
 
-            const dominantLevel =
-              modal.modes?.length === 1
-                ? modal.modes[0]
-                : (
-                    modal.modes?.length
-                      ? Math.max(
-                          ...modal.modes
-                        )
-                      : 0
-                  );
-
-            const dominantRate =
-              modal.modeRate ||
-              0;
-
-            const rgb = {
-              1: "190,70,70",
-              2: "205,154,55",
-              3: "72,145,112",
-              4: "21,105,112"
-            }[dominantLevel] ||
-            "120,120,120";
-
-            const alpha =
-              0.18 +
-              (
-                dominantRate /
-                100
-              ) *
-              0.62;
-
-            return `
-              <div
-                class="heat-cell"
-                style="
-                  background:rgba(${rgb},${alpha.toFixed(2)});
-                  border:1px solid rgba(${rgb},0.42);
-                  border-radius:12px;
-                  padding:12px;
-                "
-              >
-
-                <strong>
-                  م${item.id}
-                </strong>
-
-                <span>
-                  ${
-                    modal.total
-                      ? `${esc(modalLevelText(modal))}`
-                      : "لا توجد بيانات"
-                  }
-                </span>
-
-              </div>
-            `;
+          let rgb = "120,120,120";
+          if (rate !== null) {
+            if (rate >= 85) rgb = "21,105,112";
+            else if (rate >= 70) rgb = "72,145,112";
+            else if (rate >= 50) rgb = "205,154,55";
+            else rgb = "190,70,70";
           }
-        )
+
+          const alpha = rate === null
+            ? 0.18
+            : 0.18 + (rate / 100) * 0.62;
+
+          return `
+            <div
+              class="heat-cell"
+              style="
+                background:rgba(${rgb},${alpha.toFixed(2)});
+                border:1px solid rgba(${rgb},0.42);
+                border-radius:12px;
+                padding:12px;
+              "
+            >
+              <strong>م${item.id}</strong>
+              <span>
+                ${rate === null
+                  ? "لا توجد بيانات"
+                  : `يحقق التوقعات فأعلى ${rate}%`}
+              </span>
+            </div>
+          `;
+        })
         .join("");
   }
 
@@ -5456,7 +5437,7 @@ function renderDashboard() {
             </strong>
 
             <span>
-              ${item.exceedsRate}% يتجاوز التوقعات
+              ${item.meetsRate}% يحقق التوقعات فأعلى
             </span>
 
           </div>
@@ -5624,15 +5605,13 @@ function renderDashboard() {
   if (
     $("supportImpactSummary")
   ) {
-    const observed =
-      supports
-        .map(
-          supportObservedRow
-        )
-        .filter(
-          item =>
-            item?.change
-        );
+    // Count one current support case per teacher × criterion, exactly as the
+    // lifecycle snapshot does.  Only cases with a genuinely later comparable
+    // visit enter improved/stable/declined; the rest remain "not measured yet".
+    const currentSupportCases = canonicalSupportRows(supports);
+    const observedRows = currentSupportCases.map(supportObservedRow);
+    const observed = observedRows.filter(item => item?.change);
+    const notMeasured = observedRows.filter(item => !item?.change).length;
 
     const improved =
       observed.filter(
@@ -5683,6 +5662,15 @@ function renderDashboard() {
             </strong>
             <span>
               تراجع
+            </span>
+          </div>
+
+          <div>
+            <strong>
+              ${notMeasured}
+            </strong>
+            <span>
+              لم يُقَس بعد
             </span>
           </div>
 
@@ -6007,36 +5995,44 @@ function renderHistory() {
    MONTHLY + OVERALL
 ========================================================= */
 
+function officialAnalyticsRows(rows) {
+  return (typeof v7ActualVisits === "function")
+    ? v7ActualVisits(rows || [], { source: "official" })
+    : (rows || []);
+}
+
 function analysisHTML(
   rows,
   title,
   growthRows = rows,
   scope = {}
 ) {
+  const officialRows = officialAnalyticsRows(rows);
+  const officialGrowthRows = officialAnalyticsRows(growthRows);
   const coverage =
     teacherCoverage(
-      rows,
+      officialRows,
       scope
     );
 
   const consistency =
     consistencySummary(
-      rows
+      officialRows
     );
 
   const leadership =
     leadershipVisitStats(
-      rows
+      officialRows
     );
 
   const gaps =
     weakestCriteria(
-      rows
+      officialRows
     );
 
   const strengths =
     strongestCriteria(
-      rows
+      officialRows
     );
 
   const scopeText =
@@ -6072,7 +6068,7 @@ function analysisHTML(
             إجمالي الزيارات
           </span>
           <strong>
-            ${rows.length}
+            ${officialRows.length}
           </strong>
         </article>
 
@@ -6269,8 +6265,8 @@ function analysisHTML(
       <div class="criteria-intelligence">
 
         ${criteriaIntelligenceHTML(
-          rows,
-          growthRows,
+          officialRows,
+          officialGrowthRows,
           scopeText
         )}
 
@@ -6792,11 +6788,14 @@ function generateReport() {
     return;
   }
 
-  const rows =
+  const rawRows =
     reportRows();
 
-  const growthRows =
+  const rawGrowthRows =
     reportGrowthRows();
+
+  const rows = officialAnalyticsRows(rawRows);
+  const growthRows = officialAnalyticsRows(rawGrowthRows);
 
   const mode =
     selectedReportMode();
@@ -6978,8 +6977,10 @@ function generateReport() {
 
           <div>
             <span>
-              معدّة التقرير
+              إعداد
             </span>
+            <br>
+            <small>اختصاصي مصادر التعلم</small>
             <br>
             <strong>
               ${REPORT_INFO.preparedBy}
@@ -7013,6 +7014,7 @@ function generateReport() {
 }
 
 function localReportNarrative(rows) {
+  rows = officialAnalyticsRows(rows);
   const departmentId = $("reportDeptFilter")?.value || "";
   const teacherId = $("reportTeacherFilter")?.value || "";
   const scope = scopeLabel(departmentId, teacherId);
@@ -8286,13 +8288,9 @@ async function createAutomaticFollowupsForVisit(
 
     if (
       !source ||
-      String(
-        source.visit_date
-      ) >
-      String(
-        visit.visit_date
-      )
+      String(visit.visit_date) <= String(source.visit_date)
     ) {
+      // الزيارة المشتركة في اليوم نفسه ليست متابعة لاحقة.
       continue;
     }
 
@@ -8396,20 +8394,100 @@ async function createAutomaticFollowupsForVisit(
         );
     }
 
+    const nextStatus = num(after) >= 2 ? "مغلق" : "تحت المتابعة";
+
     await sb
       .from(
         "support_actions"
       )
       .update(
-        {
-          status:
-            "تحت المتابعة"
-        }
+        { status: nextStatus }
       )
       .eq(
         "id",
         support.id
       );
+  }
+}
+
+/* =========================================================
+   V10.15 — SUPPORT LIFECYCLE RECONCILIATION
+   Open -> Follow-up -> Closed when the same criterion reaches
+   "meets expectations" (2) or higher in a later actual visit.
+========================================================= */
+let supportReconcileBusy = false;
+
+async function reconcileSupportLifecycle() {
+  if (supportReconcileBusy || !supports?.length) return false;
+  supportReconcileBusy = true;
+  let changed = false;
+  try {
+    for (const support of supports) {
+      if (String(support.status || "") === "مغلق") continue;
+      const source = visits.find(v => String(v.id) === String(support.source_visit_id));
+      if (!source) continue;
+
+      // Same-day joint records are one observation, never a follow-up.
+      const later = v7ActualVisits(
+        visits.filter(v =>
+          String(v.teacher_id) === String(support.teacher_id) &&
+          String(v.visit_date) > String(source.visit_date)
+        ),
+        { source: "official" }
+      ).sort((a,b) => String(a.visit_date).localeCompare(String(b.visit_date)));
+
+      const measured = later.filter(v => {
+        const rating = ratingMapForVisit(v.id)[num(support.criterion_no)];
+        return num(rating) > 0;
+      });
+      if (!measured.length) continue;
+
+      const latest = measured[measured.length - 1];
+      const before = ratingMapForVisit(source.id)[num(support.criterion_no)];
+      const after = ratingMapForVisit(latest.id)[num(support.criterion_no)];
+      if (!before || !after) continue;
+
+      const nextStatus = num(after) >= 2 ? "مغلق" : "تحت المتابعة";
+      const change = changeInfo(before, after);
+      const assessment = nextStatus === "مغلق"
+        ? "تحقق المستوى المستهدف"
+        : (change.label === "استقرار" ? "لم يظهر أثر بعد" : "يحتاج متابعة إضافية");
+
+      const existing = supportFollowups.find(f =>
+        String(f.support_action_id) === String(support.id) &&
+        String(f.followup_visit_id) === String(latest.id)
+      );
+      const payload = {
+        support_action_id: support.id,
+        followup_visit_id: latest.id,
+        before_rating: before,
+        after_rating: after,
+        leadership_assessment: assessment,
+        followup_note: nextStatus === "مغلق"
+          ? `أُغلقت تلقائيًا: المعيار وصل إلى ${ratingLabel(after)} في زيارة لاحقة.`
+          : `التغير المرصود: ${change.label}`
+      };
+
+      if (existing) {
+        const r = await sb.from("support_followups").update(payload).eq("id", existing.id);
+        if (r.error) throw r.error;
+      } else {
+        const r = await sb.from("support_followups").insert(payload);
+        if (r.error) throw r.error;
+      }
+
+      if (String(support.status || "") !== nextStatus) {
+        const r = await sb.from("support_actions").update({ status: nextStatus }).eq("id", support.id);
+        if (r.error) throw r.error;
+        changed = true;
+      }
+    }
+    return changed;
+  } catch (error) {
+    console.warn("Support lifecycle reconciliation skipped:", error);
+    return false;
+  } finally {
+    supportReconcileBusy = false;
   }
 }
 
@@ -10025,7 +10103,7 @@ window.printVisitForm =
 
                 <div>
                   <span>
-                    إعداد ومتابعة النظام
+                    إعداد
                   </span>
                   <strong>
                     ${REPORT_INFO.preparedBy}
@@ -12137,7 +12215,7 @@ function generateReport(){
     <h3>${internal?"10":"9"}. الاحتياجات المهنية المستخلصة</h3><p>تُوجه الاحتياجات المدرسية العامة إلى المعايير الأعلى تكرارًا في «جزئي»، بينما يخصص الدعم الفردي للحالات التي تكرر فيها المؤشر في زيارات مستقلة. ويُفضّل استثمار المعايير ذات الأداء القوي في الزيارات التبادلية والنمذجة بدل تقديم تدريب عام غير موجه.</p>
     <h3>${internal?"11":"10"}. خطة المتابعة للفترة التالية</h3><ul><li>استكمال الرصد للحالات ذات القراءة الأولية قبل إصدار حكم اتجاهي.</li><li>إعادة رصد معايير الأولوية ${gaps.slice(0,4).map(x=>`م${x.id}`).join("، ")} بعد التدخل المهني.</li><li>توجيه الدعم المستهدف للحالات المتكررة، والتحقق من الحالات ذات الظهور الواحد قبل تصعيدها.</li><li>استثمار الممارسات القوية في ${strengths.slice(0,3).map(x=>`م${x.id}`).join("، ")} عبر التعلم من الزملاء والزيارات التبادلية.</li><li>مقارنة الفترة التالية بهذه الفترة لقياس التحسن والتراجع وإغلاق المتابعة عند ثبوت التحسن.</li></ul>
     <h3>${internal?"12":"11"}. الخلاصة التنفيذية</h3><p id="officialRecommendations">يعتمد القرار القيادي على الزيارة المعتمدة لا على عدد السجلات الخام، وعلى تكرار المؤشر في زيارات مستقلة لا على ظهور جزئي منفرد. الأولوية هي تحويل نتائج الرصد إلى تدخل محدد ثم إعادة القياس، مع المحافظة على جوانب القوة وعدم تعميم الأحكام خارج حجم البيانات المتاح.</p>
-    <div class="report-signatures" style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:34px;padding-top:18px;border-top:2px solid #0d5f66;text-align:center"><div><span>معدّة التقرير</span><br><strong>${REPORT_INFO.preparedBy}</strong></div><div><span>المديرة المساعدة</span><br><strong>${REPORT_INFO.assistantPrincipal}</strong></div><div><span>مديرة المدرسة</span><br><strong>${REPORT_INFO.principal}</strong></div></div>
+    <div class="report-signatures" style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:34px;padding-top:18px;border-top:2px solid #0d5f66;text-align:center"><div><span>إعداد</span><br><small>اختصاصي مصادر التعلم</small><br><strong>${REPORT_INFO.preparedBy}</strong></div><div><span>المديرة المساعدة</span><br><strong>${REPORT_INFO.assistantPrincipal}</strong></div><div><span>مديرة المدرسة</span><br><strong>${REPORT_INFO.principal}</strong></div></div>
   </div>`;
 }
 
@@ -12445,6 +12523,13 @@ async function boot() {
     await loadCurrentProfile();
 
     await loadAll();
+
+    // تسوية الحالات القديمة تلقائيًا عند دخول مسؤولة النظام،
+    // حتى لا تبقى حالات محسّنة معلقة إلى الأبد.
+    if (currentProfile?.role === "admin") {
+      const supportChanged = await reconcileSupportLifecycle();
+      if (supportChanged) await loadAll();
+    }
 
     fillUI();
 
@@ -14020,3 +14105,133 @@ renderPerformanceProgress=function(){
   const dept=$("progressDept")?.value||"",month=$("progressMonth")?.value||"",out=$("performanceProgressOutput");if(!out)return;const items=v10ProgressDataset(dept,month);
   out.innerHTML=v102OverallCompact(items,dept?`تطور الأداء التراكمي — ${v5DeptName(dept)}`:"تطور الأداء التراكمي — مستوى المدرسة")+v103VisibleNamesByVisit(items)+v102LeadershipReading(items)+v102CriteriaSection(items)+v104DepartmentProgressSection(items,dept);
 };
+
+/* =========================================================
+   V10.11 — LIVE ANALYTICS SYNCHRONIZATION
+   Keeps all analytical views on one freshly loaded snapshot.
+========================================================= */
+let analyticsRefreshBusy = false;
+let analyticsLastRefresh = 0;
+let analyticsRealtimeChannel = null;
+let analyticsRealtimeTimer = null;
+
+async function refreshAnalyticsSnapshot(force = false) {
+  if (analyticsRefreshBusy || !currentProfile) return;
+  const now = Date.now();
+  if (!force && now - analyticsLastRefresh < 45000) return;
+
+  const active = document.activeElement;
+  const editing = active && ["INPUT", "TEXTAREA"].includes(active.tagName);
+  if (editing && !force) return;
+
+  analyticsRefreshBusy = true;
+  try {
+    await loadAll();
+    fillUI();
+    renderAll();
+    analyticsLastRefresh = Date.now();
+  } catch (error) {
+    console.warn("Analytics auto-refresh skipped:", error);
+  } finally {
+    analyticsRefreshBusy = false;
+  }
+}
+
+function scheduleAnalyticsRefresh() {
+  clearTimeout(analyticsRealtimeTimer);
+  analyticsRealtimeTimer = setTimeout(() => refreshAnalyticsSnapshot(true), 700);
+}
+
+function startAnalyticsRealtimeSync() {
+  if (!sb?.channel || analyticsRealtimeChannel) return;
+  try {
+    analyticsRealtimeChannel = sb
+      .channel("classroom-analytics-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "visits" }, scheduleAnalyticsRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "visit_ratings" }, scheduleAnalyticsRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "support_actions" }, scheduleAnalyticsRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "support_followups" }, scheduleAnalyticsRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "teachers" }, scheduleAnalyticsRefresh)
+      .on("postgres_changes", { event: "*", schema: "public", table: "teacher_subjects" }, scheduleAnalyticsRefresh)
+      .subscribe();
+  } catch (error) {
+    console.warn("Realtime analytics sync unavailable; polling remains active:", error);
+  }
+}
+
+window.addEventListener("focus", () => refreshAnalyticsSnapshot(false));
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) refreshAnalyticsSnapshot(false);
+});
+// Fallback only: Realtime is primary; this catches environments where database
+// change broadcasts are not enabled for one of the tables.
+setInterval(() => {
+  if (!document.hidden) refreshAnalyticsSnapshot(false);
+}, 60000);
+startAnalyticsRealtimeSync();
+
+/* =========================================================
+   V10.20 — UNIFIED PROFESSIONAL PRINT SHELL
+   Presentation-only: does not change visit saving, analytics or database logic.
+========================================================= */
+(function(){
+  const PRINT_VIEWS = {
+    leadershipTrackingView: 'متابعة الزيارات القيادية',
+    followupCenterView: 'مركز المتابعة القيادي',
+    department360View: 'تحليل القسم 360°',
+    subjectCoverageView: 'تحليل المواد والتغطية',
+    teacher360View: 'بطاقة المعلمة 360°',
+    performanceProgressView: 'تطور الأداء التراكمي',
+    criteriaMatrixView: 'مصفوفة المعلمات × م1–م18',
+    nextVisitsView: 'خطة الزيارات القادمة',
+    decisionCenterView: 'مركز قرارات القيادة',
+    dataQualityView: 'جودة البيانات',
+    atharView: 'أثر | النمو والتميز المهني',
+    reportsView: 'التقرير القيادي المتكامل'
+  };
+  function activePrintView(){
+    return Object.keys(PRINT_VIEWS).map(id=>document.getElementById(id)).find(el=>el && !el.classList.contains('hidden')) || null;
+  }
+  function selectedText(view){
+    const parts=[];
+    view.querySelectorAll('.no-print select').forEach(sel=>{
+      const txt=sel.options?.[sel.selectedIndex]?.textContent?.trim();
+      if(txt && !/^(اختر|الكل)$/i.test(txt)) parts.push(txt);
+    });
+    return [...new Set(parts)].slice(0,3).join(' • ');
+  }
+  function ensureShell(view){
+    if(!view || view.id==='reportsView') return;
+    let shell=view.querySelector(':scope > .v1020-print-head');
+    if(!shell){
+      shell=document.createElement('div');
+      shell.className='v1020-print-head';
+      view.insertBefore(shell, view.firstChild);
+    }
+    const scope=selectedText(view);
+    const now=new Intl.DateTimeFormat('ar-BH',{year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    shell.innerHTML=`<img src="school-header.jpg" alt="ترويسة المدرسة"><div class="v1020-print-title"><h1>${PRINT_VIEWS[view.id]||'تقرير الزيارات الصفية'}</h1><p>${scope?scope+' • ':''}تاريخ الاستخراج: ${now}</p></div>`;
+    let foot=view.querySelector(':scope > .v1020-print-foot');
+    if(!foot){
+      foot=document.createElement('div');
+      foot.className='v1020-print-foot';
+      foot.innerHTML=`<div><span>إعداد</span><small>اختصاصي مصادر التعلم</small><strong>${REPORT_INFO.preparedBy}</strong></div><div><span>المديرة المساعدة</span><strong>${REPORT_INFO.assistantPrincipal}</strong></div><div><span>مديرة المدرسة</span><strong>${REPORT_INFO.principal}</strong></div>`;
+      view.appendChild(foot);
+    }
+  }
+  window.addEventListener('beforeprint',()=>{
+    document.body.classList.remove('v1020-printing');
+    document.querySelectorAll('.v1020-print-active').forEach(x=>x.classList.remove('v1020-print-active'));
+    const view=activePrintView();
+    if(!view) return;
+    ensureShell(view);
+    view.classList.add('v1020-print-active');
+    document.body.classList.add('v1020-printing');
+    document.body.dataset.printView=view.id;
+  });
+  window.addEventListener('afterprint',()=>{
+    document.body.classList.remove('v1020-printing');
+    document.querySelectorAll('.v1020-print-active').forEach(x=>x.classList.remove('v1020-print-active'));
+    delete document.body.dataset.printView;
+  });
+})();

@@ -3192,9 +3192,9 @@ tbody tr:hover {
     margin: 0 !important;
   }
 
-  #reportsView {
-    display: block !important;
-
+  /* لا نفرض التقرير القيادي أثناء طباعة شاشة أخرى.
+     نظام .view.hidden يبقي كل التقارير غير النشطة مخفية في الطباعة. */
+  #reportsView:not(.hidden) {
     padding: 0 !important;
   }
 
@@ -3440,3 +3440,209 @@ tbody tr:hover {
 /* V10.6 - user management actions */
 .user-action-group{display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:center}
 .user-action-group .btn{white-space:nowrap}
+
+/* =========================================================
+   V10.20 — UNIFIED PROFESSIONAL PRINT SYSTEM
+   Visual/print layer only. No analytics or save logic is changed.
+========================================================= */
+.v1020-print-head,.v1020-print-foot{display:none}
+
+@media print {
+  @page { size: A4 landscape; margin: 9mm 8mm 11mm; }
+
+  html,body{direction:rtl!important;background:#fff!important}
+  body.v1020-printing{font-family:Tahoma,Arial,sans-serif!important;color:#17313d!important}
+  body.v1020-printing .main{margin:0!important;padding:0!important;width:100%!important;max-width:none!important}
+  body.v1020-printing .view{display:none!important}
+  body.v1020-printing .view.v1020-print-active{display:block!important;padding:0!important;width:100%!important;max-width:none!important}
+  body.v1020-printing .view.v1020-print-active .no-print{display:none!important}
+
+  .v1020-print-head{display:block!important;margin:0 0 5mm!important;padding:0 0 4mm!important;border-bottom:1.2px solid #c8d7dc;break-inside:avoid;page-break-inside:avoid}
+  .v1020-print-head img{display:block;width:100%;height:22mm;object-fit:contain;object-position:center;margin:0 auto 3mm}
+  .v1020-print-title{text-align:center}
+  .v1020-print-title h1{margin:0!important;font-size:18pt!important;line-height:1.35!important;color:#0f5366!important;font-weight:800!important}
+  .v1020-print-title p{margin:1.5mm 0 0!important;font-size:9pt!important;color:#60727a!important}
+  .v1020-print-foot{display:flex!important;justify-content:space-between;gap:8mm;margin-top:5mm;padding-top:2.5mm;border-top:1px solid #d9e3e6;font-size:7.5pt;color:#718087;break-inside:avoid}
+
+  body.v1020-printing .analysis-hero{margin:0 0 4mm!important;padding:4mm 5mm!important;border-radius:3mm!important;min-height:0!important;box-shadow:none!important;break-inside:avoid}
+  body.v1020-printing .analysis-hero h2{font-size:14pt!important;margin:0 0 1mm!important}
+  body.v1020-printing .analysis-hero p{font-size:8.5pt!important;margin:0!important;line-height:1.5!important}
+  body.v1020-printing .panel,
+  body.v1020-printing .v5-report,
+  body.v1020-printing .athar-recognition,
+  body.v1020-printing .v102-summary-grid section{box-shadow:none!important;border:1px solid #d8e2e6!important;border-radius:3mm!important;background:#fff!important}
+  body.v1020-printing .panel{padding:4mm!important;margin:0 0 4mm!important}
+
+  body.v1020-printing .v5-report-head{gap:3mm!important;margin-bottom:3mm!important;align-items:flex-start!important}
+  body.v1020-printing .v5-report-head h3,
+  body.v1020-printing .panel h3{font-size:12pt!important;margin:0 0 1.5mm!important;color:#174f61!important}
+  body.v1020-printing .panel h4{font-size:10pt!important;margin:3mm 0 2mm!important;color:#174f61!important}
+  body.v1020-printing p,body.v1020-printing li{font-size:8.5pt!important;line-height:1.55!important}
+
+  body.v1020-printing .v5-kpis,
+  body.v1020-printing .executive-kpi-grid{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:2mm!important}
+  body.v1020-printing .v5-kpis b,
+  body.v1020-printing .executive-kpi-grid>*{padding:2.5mm!important;min-height:0!important;border-radius:2.5mm!important;box-shadow:none!important}
+  body.v1020-printing .v5-kpis b{font-size:15pt!important}
+  body.v1020-printing .v5-kpis small{font-size:7.5pt!important;line-height:1.3!important}
+  body.v1020-printing .v5-priority-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:2mm!important}
+  body.v1020-printing .v5-priority-grid>div{padding:3mm!important;border-radius:2.5mm!important}
+
+  body.v1020-printing .table-wrap{overflow:visible!important;max-height:none!important;width:100%!important}
+  body.v1020-printing table{width:100%!important;border-collapse:collapse!important;table-layout:auto!important;font-size:7.7pt!important;background:#fff!important}
+  body.v1020-printing thead{display:table-header-group!important}
+  body.v1020-printing tfoot{display:table-footer-group!important}
+  body.v1020-printing th{background:#eaf2f4!important;color:#173f4d!important;font-weight:800!important;text-align:center!important;vertical-align:middle!important;padding:2.2mm 1.4mm!important;border:1px solid #cfdde1!important;line-height:1.35!important;white-space:normal!important}
+  body.v1020-printing td{padding:2.1mm 1.4mm!important;border:1px solid #dce5e8!important;vertical-align:top!important;line-height:1.45!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:normal!important}
+  body.v1020-printing tbody tr{break-inside:avoid;page-break-inside:avoid}
+  body.v1020-printing td .v5-badge,body.v1020-printing .v5-badge{font-size:7pt!important;padding:1.2mm 2mm!important;white-space:nowrap!important}
+
+  /* مركز المتابعة: أعرض تقرير في المنظومة، لذلك نضغط التفاصيل دون تحويل الكلمات إلى أعمدة رأسية. */
+  body[data-print-view="followupCenterView"] table{font-size:7.2pt!important}
+  body[data-print-view="followupCenterView"] th{font-size:7.1pt!important;padding:1.8mm 1mm!important}
+  body[data-print-view="followupCenterView"] td{font-size:7.1pt!important;padding:1.8mm 1mm!important;line-height:1.38!important}
+  body[data-print-view="followupCenterView"] tbody tr{break-inside:auto;page-break-inside:auto}
+
+  body.v1020-printing .analysis-note{margin:3mm 0!important;padding:2.5mm 3mm!important;border-radius:2.5mm!important;font-size:8pt!important;line-height:1.5!important;break-inside:avoid}
+  body.v1020-printing .v102-summary-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:2.5mm!important;margin:3mm 0!important}
+  body.v1020-printing .athar-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:3mm!important}
+  body.v1020-printing .athar-recognition,body.v1020-printing .v10-round-details{break-inside:avoid!important;page-break-inside:avoid!important}
+
+  /* التقرير القيادي المتكامل لديه صفحات رسمية خاصة به؛ نحافظ عليها ولا نضيف ترويسة ثانية. */
+  body[data-print-view="reportsView"] .official-report-page{min-height:0!important;padding:7mm!important}
+  body[data-print-view="reportsView"] .official-school-header{max-height:20mm!important}
+
+  canvas,svg,img{max-width:100%!important}
+}
+
+
+/* =========================================================
+   V10.21 — FINAL PRINT POLISH
+   Presentation only: centered titles, safe page frame, unified approvals.
+========================================================= */
+@media print {
+  @page { size: A4 landscape; margin: 10mm 10mm 12mm; }
+
+  body.v1020-printing .view.v1020-print-active{
+    box-sizing:border-box!important;
+    width:100%!important;
+    max-width:100%!important;
+    margin:0 auto!important;
+  }
+
+  .v1020-print-head{
+    width:100%!important;
+    box-sizing:border-box!important;
+    text-align:center!important;
+    margin:0 auto 5mm!important;
+  }
+  .v1020-print-head img{
+    width:100%!important;
+    max-width:255mm!important;
+    height:21mm!important;
+    margin:0 auto 3mm!important;
+    object-fit:contain!important;
+    object-position:center!important;
+  }
+  .v1020-print-title,
+  .v1020-print-title h1,
+  .v1020-print-title p{
+    text-align:center!important;
+    margin-left:auto!important;
+    margin-right:auto!important;
+  }
+
+  .v1020-print-foot{
+    display:grid!important;
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:8mm!important;
+    width:100%!important;
+    box-sizing:border-box!important;
+    margin:7mm auto 0!important;
+    padding:4mm 2mm 0!important;
+    border-top:1.5px solid #0d5f66!important;
+    color:#17313d!important;
+    text-align:center!important;
+    break-inside:avoid!important;
+    page-break-inside:avoid!important;
+  }
+  .v1020-print-foot>div{display:flex!important;flex-direction:column!important;align-items:center!important;gap:.7mm!important}
+  .v1020-print-foot span{font-size:8pt!important;color:#526970!important}
+  .v1020-print-foot small{font-size:7.5pt!important;color:#718087!important}
+  .v1020-print-foot strong{font-size:9.5pt!important;color:#17313d!important}
+
+  /* Integrated leadership report: align its own official layout to the same page frame. */
+  body[data-print-view="reportsView"] .official-report{
+    width:100%!important;
+    max-width:100%!important;
+    box-sizing:border-box!important;
+    margin:0 auto!important;
+    padding:0!important;
+    border:0!important;
+    box-shadow:none!important;
+  }
+  body[data-print-view="reportsView"] .official-report>img{
+    display:block!important;
+    width:100%!important;
+    max-width:255mm!important;
+    height:21mm!important;
+    object-fit:contain!important;
+    object-position:center!important;
+    margin:0 auto 4mm!important;
+  }
+  body[data-print-view="reportsView"] .official-report>h2,
+  body[data-print-view="reportsView"] .official-report>h2+p{
+    text-align:center!important;
+    margin-left:auto!important;
+    margin-right:auto!important;
+  }
+  body[data-print-view="reportsView"] .official-report>h2{
+    font-size:18pt!important;
+    line-height:1.35!important;
+    color:#0f5366!important;
+    margin-top:0!important;
+    margin-bottom:1.5mm!important;
+  }
+  body[data-print-view="reportsView"] .official-report>h2+p{
+    font-size:9pt!important;
+    color:#60727a!important;
+    margin-top:0!important;
+    margin-bottom:4mm!important;
+  }
+  body[data-print-view="reportsView"] .official-report h3{
+    margin-top:5mm!important;
+    margin-bottom:2.5mm!important;
+  }
+  body[data-print-view="reportsView"] .leadership-report-grid{
+    display:grid!important;
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+    gap:3mm!important;
+    margin:3mm 0 5mm!important;
+  }
+  body[data-print-view="reportsView"] .leadership-kpi{
+    text-align:center!important;
+    padding:3mm!important;
+    border:1px solid #d8e2e6!important;
+    border-radius:3mm!important;
+    background:#f7fafb!important;
+    break-inside:avoid!important;
+  }
+  body[data-print-view="reportsView"] .leadership-kpi strong{display:block!important;font-size:16pt!important;color:#0f5366!important}
+  body[data-print-view="reportsView"] .leadership-kpi span{display:block!important;font-size:8pt!important;margin-top:1mm!important}
+  body[data-print-view="reportsView"] .report-signatures{
+    display:grid!important;
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:8mm!important;
+    width:100%!important;
+    box-sizing:border-box!important;
+    margin:7mm auto 0!important;
+    padding:4mm 2mm 0!important;
+    border-top:1.5px solid #0d5f66!important;
+    text-align:center!important;
+    break-inside:avoid!important;
+    page-break-inside:avoid!important;
+  }
+  body[data-print-view="reportsView"] .report-signatures span{font-size:8pt!important;color:#526970!important}
+  body[data-print-view="reportsView"] .report-signatures small{font-size:7.5pt!important;color:#718087!important}
+  body[data-print-view="reportsView"] .report-signatures strong{font-size:9.5pt!important;color:#17313d!important}
+}

@@ -1,0 +1,12 @@
+V10.21 — Final Print Polish
+
+- Added unified approval/signature block to all printable reports:
+  إعداد / اختصاصي مصادر التعلم / فاتن صلاح
+  المديرة المساعدة / خلود الكعبي
+  مديرة المدرسة / أحلام السويدي
+- Changed integrated report label from معدّة التقرير to إعداد.
+- Centered report titles and period lines.
+- Normalized A4 landscape page margins and content frame.
+- Centered school header and constrained it to the printable width.
+- Improved integrated leadership KPI cards and signature block.
+- Presentation/print layer only. Visit saving, database logic, analytics, and special-education subject logic were not changed.
